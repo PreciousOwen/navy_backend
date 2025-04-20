@@ -1,0 +1,34 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSM Polygons</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        #map { height: 500px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h2>OSM Polygons</h2>
+    <div id="map"></div>
+
+    <script>
+        var map = L.map('map').setView([-6.8, 39.2], 12);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        var polygons = {{ polygon_data|safe }};
+
+        polygons.forEach(function(polygon) {
+            var geojson = JSON.parse(polygon.geometry);
+            var style = { color: "blue", weight: 1, fillOpacity: 0.5 };
+            L.geoJSON(geojson, { style: style }).addTo(map).bindPopup(polygon.name || "Unnamed Polygon");
+        });
+    </script>
+</body>
+</html>

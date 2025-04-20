@@ -1,0 +1,47 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSM Map - Road Polygons</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        #map { height: 500px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h2>OpenStreetMap with Django - Road Polygons</h2>
+    <div id="map"></div>
+
+    <script>
+        var map = L.map('map').setView([-6.8, 39.2], 12);  // Initial center and zoom level
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Serialize road_data to JSON
+        var roads = {{ road_data|safe }};
+        var bounds = L.latLngBounds();  // Initialize bounds
+
+        // Render road polygons
+        roads.forEach(function(road) {
+            try {
+                var geojson = JSON.parse(road.geojson);
+                var roadStyle = { color: "green", weight: 1, fillOpacity: 0.5 };  // Polygons in green
+                var layer = L.geoJSON(geojson, { style: roadStyle }).addTo(map).bindPopup(road.name || "Unnamed Road");
+                bounds.extend(layer.getBounds());  // Extend bounds to include the polygon
+            } catch (error) {
+                console.error("Error rendering road:", road, error);
+            }
+        });
+
+        // Fit the map to the bounds of all polygons
+        if (!bounds.isEmpty()) {
+            map.fitBounds(bounds);
+        }
+    </script>
+</body>
+</html>

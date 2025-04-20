@@ -1,0 +1,173 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>University Roads and Buildings</title>
+
+    <!-- MapLibre GL CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
+    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+
+    <style>
+        #map { height: 500px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h2>University Roads and Buildings</h2>
+    <form method="POST">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit">Find Shortest Path</button>
+    </form>
+    <div id="map"></div>
+
+    <script>
+        console.log("JavaScript is running!");
+
+        // Parse road and building data
+        let roads = [];
+        let buildings = [];
+        try {
+            roads = JSON.parse('{{ road_data_json|escapejs }}');
+            buildings = JSON.parse('{{ building_data_json|escapejs }}');
+            console.log("Road Data:", roads);
+            console.log("Building Data:", buildings);
+        } catch (error) {
+            console.error("Error parsing data:", error);
+        }
+
+        let shortestPath = {{ shortest_path_json|default:"null"|safe }};
+
+        // Initialize MapLibre GL JS with OSM raster tiles
+        const map = new maplibregl.Map({
+            container: 'map',
+            style: {
+                version: 8,
+                sources: {
+                    'osm-tiles': {
+                        type: 'raster',
+                        tiles: [
+                            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+                        ],
+                        tileSize: 256,
+                        attribution: '© OpenStreetMap contributors'
+                    }
+                },
+                layers: [
+                    {
+                        id: 'osm-tiles',
+                        type: 'raster',
+                        source: 'osm-tiles'
+                    }
+                ]
+            },
+            center: [39.281655, -6.814328],
+            zoom: 15,
+            pitch: 50,
+            bearing: 30
+        });
+
+        map.addControl(new maplibregl.NavigationControl());
+
+        // Function to add roads to the map
+        function renderRoads(roads) {
+            roads.forEach(function(road, index) {
+                try {
+                    console.log(`Processing road ${index + 1}:`, road);
+                    let geojson = road.geometry;
+
+                    if (typeof geojson === "string") {
+                        geojson = JSON.parse(geojson);
+                    }
+
+                    map.addSource(`road-${index}`, {
+                        type: 'geojson',
+                        data: geojson
+                    });
+
+                    map.addLayer({
+                        id: `road-layer-${index}`,
+                        type: 'line',
+                        source: `road-${index}`,
+                        paint: {
+                            'line-color': 'purple',
+                            'line-width': 2
+                        }
+                    });
+                } catch (error) {
+                    console.error(`Error rendering road ${index + 1}:`, error);
+                }
+            });
+        }
+
+        // Function to add buildings to the map
+        function renderBuildings(buildings) {
+            buildings.forEach(function(building, index) {
+                try {
+                    console.log(`Processing building ${index + 1}:`, building);
+                    let geojson = building.geometry;
+
+                    if (typeof geojson === "string") {
+                        geojson = JSON.parse(geojson);
+                    }
+
+                    map.addSource(`building-${index}`, {
+                        type: 'geojson',
+                        data: geojson
+                    });
+
+                    map.addLayer({
+                        id: `building-layer-${index}`,
+                        type: 'fill',
+                        source: `building-${index}`,
+                        paint: {
+                            'fill-color': 'blue',
+                            'fill-opacity': 0.5
+                        }
+                    });
+                } catch (error) {
+                    console.error(`Error rendering building ${index + 1}:`, error);
+                }
+            });
+        }
+
+        // Wait for the style to finish loading
+        map.on('load', function () {
+            console.log("Map style is loaded. Rendering roads and buildings...");
+
+            if (roads.length > 0) {
+                renderRoads(roads);
+            } else {
+                console.warn("No roads available to render.");
+            }
+
+            if (buildings.length > 0) {
+                renderBuildings(buildings);
+            } else {
+                console.warn("No buildings available to render.");
+            }
+
+            if (shortestPath) {
+                map.addSource('shortest-path', {
+                    type: 'geojson',
+                    data: shortestPath
+                });
+
+                map.addLayer({
+                    id: 'shortest-path-layer',
+                    type: 'line',
+                    source: 'shortest-path',
+                    paint: {
+                        'line-color': 'red',
+                        'line-width': 3
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>

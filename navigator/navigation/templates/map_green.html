@@ -1,0 +1,48 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSM Map - Green Roads</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        #map { height: 500px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h2>OpenStreetMap with Django - Green Roads</h2>
+    <div id="map"></div>
+
+    <script>
+        var map = L.map('map').setView([-6.8, 39.2], 12);  // Adjust coordinates as needed
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        var roads = {{ road_data|safe }};
+        var nodes = {{ node_data|safe }};  // Nodes that make up the roads
+
+        // Render roads in green
+        roads.forEach(function(road) {
+            var geojson = JSON.parse(road.geojson);
+            var roadStyle = { color: "green", weight: 3 };  // Roads in green color
+            L.geoJSON(geojson, { style: roadStyle }).addTo(map).bindPopup(road.name || "Unnamed Road");
+        });
+
+        // Render nodes as markers
+        nodes.forEach(function(node) {
+            L.marker([node.lat, node.lng], { icon: L.icon({ 
+                iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                iconSize: [25, 41], 
+                iconAnchor: [12, 41],
+                popupAnchor: [1, -34]
+            })})
+                .addTo(map)
+                .bindPopup("<b>Node</b>");
+        });
+    </script>
+</body>
+</html>

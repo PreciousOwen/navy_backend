@@ -1,0 +1,4 @@
+osm2pgsql -d osm_data -U postgres -H localhost -P 5433 -W --create --slim -C 2000 --style "E:\PRECIOUS PROJECT\DEFAULT.STYLE\osm2pgsql\default.style" tanzania.osm.pbf
+
+
+THIS IS  A WORKING osm2pgsql command

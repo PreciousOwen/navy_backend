@@ -1,0 +1,28 @@
+@"
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Virtual environment
+venv/
+env/
+
+# Django specific
+*.sqlite3
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Ignore large files
+*.zip
+*.tar.gz
+*.rar
+*.iso
+*.mp4
+*.mp3
+*.exe
+*.dll
+*.bin
+*.log
+"@ > .gitignore

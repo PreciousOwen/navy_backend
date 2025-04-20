@@ -1,0 +1,11 @@
+set PATH=E:\PRECIOUS PROJECT\navigator\venv\Lib\site-packages\osgeo;%PATH%
+
+
+
+
+osm_id to be removed = Processing road 369: {osm_id: 1372660163, name: 'Example Path', geometry: {…}}
+
+
+
+net start postgresql-x64-17 == COMMAND FOR SHUTDOWN OF POSTGRESQL 17
+

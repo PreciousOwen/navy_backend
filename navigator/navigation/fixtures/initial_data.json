@@ -1,0 +1,11 @@
+[
+    {
+        "model": "navigation.location",
+        "pk": 1,
+        "fields": {
+            "name": "Example Location",
+            "latitude": -6.166585,
+            "longitude": 39.33596
+        }
+    }
+]
