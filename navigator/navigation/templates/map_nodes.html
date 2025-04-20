@@ -1,0 +1,72 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nodes</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <style>
+        #map { height: 500px; width: 100%; }
+    </style>
+</head>
+<body>
+    <h2>Nodes</h2>
+    <div id="map"></div>
+
+    <script>
+        console.log("JavaScript is running!");  // Debugging statement
+
+        // Use the serialized JSON data
+        let nodes;
+        try {
+            nodes = JSON.parse('{{ node_data_json|escapejs }}');
+            console.log("Node Data:", nodes);  // Log the node data
+        } catch (error) {
+            console.error("Error parsing data:", error);
+        }
+
+        // Initialize the map
+        let map;
+        try {
+            map = L.map('map').setView([-6.814328, 39.281655], 15);  // Center on the specific area
+            console.log("Map initialized successfully.");
+        } catch (error) {
+            console.error("Error initializing the map:", error);
+        }
+
+        // Add a tile layer to the map
+        try {
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+            console.log("Tile layer added successfully.");
+        } catch (error) {
+            console.error("Error adding tile layer:", error);
+        }
+
+        // Function to render nodes on the map
+        function renderNodes(nodes) {
+            nodes.forEach(function(node, index) {
+                try {
+                    console.log(`Processing node ${index + 1}:`, node);  // Log each node
+
+                    // Add the node to the map
+                    L.marker([node.latitude, node.longitude]).addTo(map)
+                        .bindPopup(`<b>Node ID:</b> ${node.id}<br><b>Tags:</b> ${JSON.stringify(node.tags)}`);
+                } catch (error) {
+                    console.error(`Error rendering node ${index + 1}:`, error);
+                }
+            });
+        }
+
+        // Render the nodes
+        if (nodes && nodes.length > 0) {
+            renderNodes(nodes);
+        } else {
+            console.warn("No nodes available to render.");
+        }
+    </script>
+</body>
+</html>
