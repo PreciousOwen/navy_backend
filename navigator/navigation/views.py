@@ -254,14 +254,21 @@ import json  # Ensure this import is present
 import time  # Import time for measuring execution time
 from .models import CachedRoad  # Import the CachedRoad model
 
+# import time
+# import json
+# from django.shortcuts import render
+# from django.db import connection
+# from .models import CachedRoad  # Assuming you have a model to cache roads
+
+
 def map_roads(request):
-    print("Starting map_roads view...")  # Debugging: Start of the view
-    start_time = time.time()  # Record the start time
+    print("Starting map_roads view...")  # Debug: Start of view
+    start_time = time.time()
 
-    # Define the bounding box for the specific area
-    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216)  # (min_lng, min_lat, max_lng, max_lat)
+    # Define the bounding box for the area of interest
+    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216)
 
-    # Check if cached roads exist
+    # Check for cached road data
     cached_roads = CachedRoad.objects.all()
     if cached_roads.exists():
         print("Using cached road data...")
@@ -274,71 +281,77 @@ def map_roads(request):
             for road in cached_roads
         ]
     else:
-        # Query to fetch road data from the planet_osm_ways table
         try:
-            print("Executing SQL query to fetch road data...")  # Debugging: Before executing the query
-            query_start_time = time.time()  # Record query start time
+            print("Executing SQL query to fetch road data...")
+            query_start_time = time.time()
 
             with connection.cursor() as cursor:
                 cursor.execute(f"""
-                    SELECT id, tags::jsonb->>'name' AS name, ST_AsGeoJSON(ST_Transform(ST_MakeLine(ARRAY(
-                        SELECT ST_SetSRID(ST_MakePoint(n.lon / 1e7, n.lat / 1e7), 4326)
-                        FROM unnest(nodes) AS node_id
+                    WITH way_geom AS (
+                        SELECT
+                            w.id,
+                            w.tags::jsonb->>'name' AS name,
+                            ST_MakeLine(
+                                ST_SetSRID(ST_MakePoint(n.lon / 1e7, n.lat / 1e7), 4326)
+                            ) AS geom
+                        FROM planet_osm_ways w
+                        JOIN unnest(w.nodes) AS node_id ON TRUE
                         JOIN planet_osm_nodes n ON n.id = node_id
-                    ))) AS geometry
-                    FROM planet_osm_ways
-                    WHERE tags::jsonb ? 'highway'
-                    AND ST_Intersects(
-                        ST_MakeLine(ARRAY(
-                            SELECT ST_SetSRID(ST_MakePoint(n.lon / 1e7, n.lat / 1e7), 4326)
-                            FROM unnest(nodes) AS node_id
-                            JOIN planet_osm_nodes n ON n.id = node_id
-                        )),
+                        WHERE w.tags::jsonb ? 'highway'
+                        GROUP BY w.id, w.tags
+                    )
+                    SELECT id, name, ST_AsGeoJSON(geom) AS geometry
+                    FROM way_geom
+                    WHERE ST_Intersects(
+                        geom,
                         ST_MakeEnvelope({case_study_bbox[0]}, {case_study_bbox[1]}, {case_study_bbox[2]}, {case_study_bbox[3]}, 4326)
                     )
-                    LIMIT 2000;  -- Fetch up to 2000 road data
+                    LIMIT 2000;
                 """)
                 road_rows = cursor.fetchall()
 
-            query_end_time = time.time()  # Record query end time
-            print(f"SQL query executed successfully. Time taken: {query_end_time - query_start_time:.2f} seconds")  # Debugging: Query execution time
-            print(f"Number of roads fetched: {len(road_rows)}")  # Debugging: Number of rows fetched
+            query_end_time = time.time()
+            print(f"SQL query executed in {query_end_time - query_start_time:.2f} seconds")
+            print(f"Fetched {len(road_rows)} roads.")
+
+            # Save results to DB cache
+            print("Saving queried roads to the database...")
+            road_data = []
+            for row in road_rows:
+                road_data.append({
+                    "osm_id": row[0],
+                    "name": row[1] or "Unnamed Road",
+                    "geometry": row[2]
+                })
+                CachedRoad.objects.create(
+                    osm_id=row[0],
+                    name=row[1] or "Unnamed Road",
+                    geometry=row[2]
+                )
 
         except Exception as e:
-            print(f"Error during SQL query execution: {e}")  # Debugging: Log any SQL errors
+            print(f"Error during SQL query execution: {e}")
             return render(request, "error.html", {"message": "Error fetching road data."})
-
-        # Save the queried roads to the CachedRoad model
-        print("Saving queried roads to the database...")
-        road_data = []
-        for row in road_rows:
-            road_data.append({
-                "osm_id": row[0],
-                "name": row[1] or "Unnamed Road",  # Replace None with "Unnamed Road" for JavaScript compatibility
-                "geometry": row[2]
-            })
-            CachedRoad.objects.create(osm_id=row[0], name=row[1], geometry=row[2])
 
     # Serialize the data to JSON
     try:
-        print("Serializing road data to JSON...")  # Debugging: Before serialization
-        serialization_start_time = time.time()  # Record serialization start time
-
+        print("Serializing road data to JSON...")
+        serialization_start = time.time()
         road_data_json = json.dumps(road_data)
-
-        serialization_end_time = time.time()  # Record serialization end time
-        print(f"Road data serialized successfully. Time taken: {serialization_end_time - serialization_start_time:.2f} seconds")  # Debugging: Serialization time
-
+        serialization_end = time.time()
+        print(f"Serialization completed in {serialization_end - serialization_start:.2f} seconds")
     except Exception as e:
-        print(f"Error during JSON serialization: {e}")  # Debugging: Log any serialization errors
+        print(f"Error during JSON serialization: {e}")
         return render(request, "error.html", {"message": "Error serializing road data."})
 
-    end_time = time.time()  # Record the end time
-    print(f"map_roads view completed successfully. Total time taken: {end_time - start_time:.2f} seconds")  # Debugging: Total execution time
+    end_time = time.time()
+    print(f"map_roads view completed in {end_time - start_time:.2f} seconds")
 
     return render(request, "map_roads.html", {
         "road_data_json": road_data_json
     })
+
+
 
 from django.db import connection  # Ensure this import is present
 import json  # Ensure this import is present
