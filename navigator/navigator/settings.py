@@ -20,8 +20,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 import os
 
-GDAL_LIBRARY_PATH = r"E:\PRECIOUS PROJECT\navigator\venv\Lib\site-packages\osgeo\gdal.dll"
-os.environ["PROJ_LIB"] = r"E:\PRECIOUS PROJECT\navigator\venv\Lib\site-packages\osgeo\data\proj"
+# GDAL_LIBRARY_PATH = r"E:\PRECIOUS PROJECT\navigator\venv\Lib\site-packages\osgeo\gdal.dll"
+# os.environ["PROJ_LIB"] = r"E:\PRECIOUS PROJECT\navigator\venv\Lib\site-packages\osgeo\data\proj"
 
 
 # Quick-start development settings - unsuitable for production
@@ -33,7 +33,8 @@ SECRET_KEY = "django-insecure-j1b*z0^baen_adm)br5f-=zk3fb%6nxwr%rjgb#k9n^2kwxv4s
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['silicon4forge.org', 'www.silicon4forge.org', '127.0.0.1']
+
 
 
 # Application definition
@@ -91,7 +92,7 @@ DATABASES = {
         'USER': 'postgres',
         'PASSWORD': 'OWEN',
         'HOST': 'localhost',
-        'PORT': '5433',  # Use the correct port
+        'PORT': '5432',  # Use the correct port
     }
 }
 
@@ -147,3 +148,10 @@ STATICFILES_DIRS = [
 
 
 # STATIC_ROOT = os.path.join(BASE_DIR, "static")
+# Static files (CSS, JavaScript, images)
+#STATIC_URL = '/static/'
+#STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+
+# Media files (user-uploaded files)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
