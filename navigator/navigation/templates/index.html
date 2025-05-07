@@ -130,6 +130,72 @@
       font-size: 24px;
       cursor: pointer;
     }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 200px;
+        padding: 15px;
+      }
+
+      .sidebar h2 {
+        font-size: 18px;
+      }
+
+      .sidebar nav a {
+        font-size: 14px;
+        padding: 8px;
+      }
+
+      .main-content {
+        padding: 20px;
+      }
+
+      .card {
+        padding: 20px;
+      }
+
+      input[type="file"],
+      select,
+      button {
+        font-size: 14px;
+        padding: 8px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .sidebar {
+        width: 150px;
+        padding: 10px;
+      }
+
+      .sidebar h2 {
+        font-size: 16px;
+      }
+
+      .sidebar nav a {
+        font-size: 12px;
+        padding: 6px;
+      }
+
+      .main-content {
+        padding: 10px;
+      }
+
+      .card {
+        padding: 15px;
+      }
+
+      input[type="file"],
+      select,
+      button {
+        font-size: 12px;
+        padding: 6px;
+      }
+
+      .modal-content {
+        padding: 15px;
+      }
+    }
   </style>
   <script src="{% static 'js/html5-qrcode.min.js' %}"></script>
 </head>
