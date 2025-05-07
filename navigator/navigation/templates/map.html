@@ -18,7 +18,6 @@
     <script>
         var map = L.map('map').setView([-6.8, 39.2], 12);  // Adjust coordinates as needed
 
-        // Optionally, remove or replace the external tile layer
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
@@ -29,7 +28,7 @@
         roads.forEach(function(road, index) {
             var geojson = JSON.parse(road.geojson);
             
-            // Ensure all roads are displayed in red color
+            // All roads in red color
             var roadStyle = { color: "red", weight: 3 };
             
             L.geoJSON(geojson, { style: roadStyle }).addTo(map).bindPopup(road.name || "Unnamed Road");

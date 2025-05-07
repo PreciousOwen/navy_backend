@@ -3,6 +3,7 @@ from . import views
 from django.conf import settings
 from django.conf.urls.static import static
 from .views import fetch_destinations
+from django.views.generic import TemplateView
 
 urlpatterns = [
     # Route for the index page
@@ -46,6 +47,9 @@ urlpatterns = [
 
     # URL for fetching destinations
     path('fetch_destinations/', fetch_destinations, name='fetch_destinations'),
+
+    # Intro page
+    path('intro/', TemplateView.as_view(template_name="intro.html"), name='intro'),
 ]
 
 # Serve static files during development

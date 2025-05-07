@@ -15,9 +15,10 @@ function navClick(name) {
   let qrScanner;
 
   function openQRScanner() {
+    console.log("Opening QR Scanner..."); // Debugging log
     document.getElementById("qrModal").style.display = "flex";
   
-    const qrScanner = new Html5Qrcode("qr-reader");
+    qrScanner = new Html5Qrcode("qr-reader");
   
     qrScanner.start(
       { facingMode: "environment" },
@@ -27,29 +28,22 @@ function navClick(name) {
       },
       (decodedText) => {
         try {
-          const qrData = JSON.parse(decodedText);
-          console.log("QR Code Data:", qrData);
+          qrData = JSON.parse(decodedText); // Update the global qrData variable
+          console.log("QR Code Data:", qrData); // Debugging log
   
-          // Fetch destination coordinates from initial_data.json
-          fetch("/static/navigation/fixtures/initial_data.json")
-            .then((response) => response.json())
-            .then((data) => {
-              const destination = data.find((item) => item.fields.name === "Example Location");
-              if (destination) {
-                const destinationLat = destination.fields.latitude;
-                const destinationLng = destination.fields.longitude;
+          // Update the UI to show the destination section
+          document.getElementById("destination-section").style.display = "block";
   
-                // Redirect to the university_blocks_roads view with the scanned and destination data
-                const url = `/navigation/university_blocks_roads/?start_lat=${qrData.lat}&start_lng=${qrData.lng}&end_lat=${destinationLat}&end_lng=${destinationLng}`;
-                console.log("Redirecting to:", url);
-                window.location.href = url;
-              } else {
-                alert("Destination not found in initial_data.json.");
-              }
-            })
-            .catch((error) => {
-              console.error("Error fetching destination data:", error);
-            });
+          // Populate the destination dropdown with the scanned coordinates
+          const destinationSelect = document.getElementById("destination-select");
+          destinationSelect.innerHTML = ""; // Clear existing options
+          const option = document.createElement("option");
+          option.value = JSON.stringify({
+            latitude: qrData.lat,
+            longitude: qrData.lng,
+          });
+          option.textContent = `${qrData.label} (Lat: ${qrData.lat}, Lng: ${qrData.lng})`;
+          destinationSelect.appendChild(option);
         } catch (error) {
           console.error("Error parsing QR code data:", error);
           alert("Invalid QR code format.");
@@ -58,9 +52,11 @@ function navClick(name) {
         }
       },
       (error) => {
-        console.log("QR Error:", error);
+        console.error("QR Code Scanning Error:", error); // Debugging log
       }
-    );
+    ).catch((err) => {
+      console.error("Error Starting QR Scanner:", err); // Debugging log
+    });
   }
   
   function closeQRScanner() {
