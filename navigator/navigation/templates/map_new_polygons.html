@@ -9,6 +9,18 @@
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
     <style>
         #map { height: 500px; width: 100%; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        h2 {
+            text-align: center;
+            margin: 20px 0;
+            color: #444;
+        }
     </style>
 </head>
 <body>
@@ -57,7 +69,7 @@
                     console.log(`Parsed GeoJSON for building ${index + 1}:`, geojson);  // Log parsed GeoJSON
 
                     // Define the style for the building
-                    let style = { color: "red", weight: 1, fillOpacity: 0.7 };
+                    let style = { color: "#ff6347", weight: 1, fillOpacity: 0.7 };  // Tomato color for buildings
 
                     // Add the building to the map
                     L.geoJSON(geojson, { style: style }).addTo(map).bindPopup(building.name || "Unnamed Building");
@@ -76,10 +88,10 @@
                     console.log(`Parsed GeoJSON for road ${index + 1}:`, geojson);  // Log parsed GeoJSON
 
                     // Define the style for the road
-                    let style = { color: "blue", weight: 2 };
+                    let style = { color: "#1e90ff", weight: 4 };  // Dodger blue color for roads with increased width
 
                     // Add the road to the map
-                    L.geoJSON(geojson, { style: style }).addTo(map).bindPopup(road.name);
+                    L.geoJSON(geojson, { style: style }).addTo(map).bindPopup(road.name || "Unnamed Road");
                 } catch (error) {
                     console.error(`Error rendering road ${index + 1}:`, error);
                 }

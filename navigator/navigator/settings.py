@@ -16,16 +16,7 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# GDAL_LIBRARY_PATH = os.environ.get("GDAL_LIBRARY_PATH", "C:/OSGeo4W/bin/gdal310.dll")
-
 import os
-
-# GDAL_LIBRARY_PATH = r"E:\PRECIOUS PROJECT\navigator\venv\Lib\site-packages\osgeo\gdal.dll"
-# os.environ["PROJ_LIB"] = r"E:\PRECIOUS PROJECT\navigator\venv\Lib\site-packages\osgeo\data\proj"
-
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = "django-insecure-j1b*z0^baen_adm)br5f-=zk3fb%6nxwr%rjgb#k9n^2kwxv4s"
@@ -35,9 +26,6 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['silicon4forge.org', 'www.silicon4forge.org', '127.0.0.1']
 
-
-
-# Application definition
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -51,6 +39,7 @@ INSTALLED_APPS = [
     'leaflet',  # Add Leaflet for map rendering
 ]
 
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -62,6 +51,7 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "navigator.urls"
+
 
 TEMPLATES = [
     {
@@ -78,6 +68,7 @@ TEMPLATES = [
         },
     },
 ]
+
 
 WSGI_APPLICATION = "navigator.wsgi.application"
 
@@ -97,9 +88,6 @@ DATABASES = {
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -115,7 +103,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/5.1/topics/i18n/
 
@@ -126,7 +113,6 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
@@ -141,11 +127,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 STATIC_URL = "/static/"
 
-# Add this:
 STATICFILES_DIRS = [
     os.path.join(BASE_DIR, "static"),
 ]
 
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles") 
+
+# Add this:
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "static"),
+]
 
 # STATIC_ROOT = os.path.join(BASE_DIR, "static")
 # Static files (CSS, JavaScript, images)

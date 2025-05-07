@@ -4,15 +4,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>University Blocks, Roads, and Shortest Path</title>
+    <title>University Roads and Buildings</title>
+
+    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+
     <style>
-        #map { height: 500px; width: 100%; }
+        #map { height: 600px; width: 100%; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            color: #333;
+        }
+        h2 {
+            text-align: center;
+            margin: 20px 0;
+            color: #444;
+        }
+        .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            font-size: 14px;
+            line-height: 18px;
+            color: #555;
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
     </style>
 </head>
 <body>
-    <h2>University Blocks, Roads, and Shortest Path</h2>
+    <h2>University Roads and Buildings</h2>
     <form method="POST">
         {% csrf_token %}
         {{ form.as_p }}
@@ -23,110 +54,155 @@
     <script>
         console.log("JavaScript is running!");  // Debugging statement
 
-        // Use the serialized JSON data
-        let roads, blocks, shortestPath;
+        // Parse road and building data
+        let roads = [];
+        let buildings = [];
+        let shortestPath = null;
+
         try {
             roads = JSON.parse('{{ road_data_json|escapejs }}');
-            blocks = JSON.parse('{{ building_data_json|escapejs }}');
+            buildings = JSON.parse('{{ building_data_json|escapejs }}');
             shortestPath = {{ shortest_path_json|default:"null"|safe }};
-            console.log("Road Data:", roads);  // Log the road data
-            console.log("Block Data:", blocks);  // Log the block data
-            console.log("Shortest Path:", shortestPath);  // Log the shortest path
+            console.log("Road Data:", roads);
+            console.log("Building Data:", buildings);
+            console.log("Shortest Path:", shortestPath);
         } catch (error) {
             console.error("Error parsing data:", error);
         }
 
         // Initialize the map
         let map;
-        try {
-            map = L.map('map').setView([-6.814328, 39.281655], 15);  // Center on the specific area
-            console.log("Map initialized successfully.");
-        } catch (error) {
-            console.error("Error initializing the map:", error);
+        if (shortestPath && shortestPath.coordinates.length > 0) {
+            // Center the map on the initial position with maximum zoom
+            const initialPosition = shortestPath.coordinates[0];
+            map = L.map('map').setView([initialPosition[1], initialPosition[0]], 18); // Maximum zoom level
+        } else {
+            // Default map view
+            map = L.map('map').setView([-6.814328, 39.281655], 15);
         }
 
         // Add a tile layer to the map
-        try {
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors'
-            }).addTo(map);
-            console.log("Tile layer added successfully.");
-        } catch (error) {
-            console.error("Error adding tile layer:", error);
-        }
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
 
         // Function to render roads on the map
         function renderRoads(roads) {
             roads.forEach(function(road, index) {
                 try {
-                    console.log(`Processing road ${index + 1}:`, road);  // Log each road
-                    let geojson = JSON.parse(road.geometry);  // Parse GeoJSON
-                    console.log(`Parsed GeoJSON for road ${index + 1}:`, geojson);  // Log parsed GeoJSON
+                    let geojson = road.geometry;
 
-                    // Define the style for the road
-                    let style = { color: "grey", weight: 2 };
+                    if (typeof geojson === "string") {
+                        geojson = JSON.parse(geojson);
+                    }
 
-                    // Add the road to the map
-                    L.geoJSON(geojson, { style: style }).addTo(map).bindPopup(road.name || "Unnamed Road");
+                    L.geoJSON(geojson, {
+                        style: {
+                            color: "#1e90ff", // Dodger blue for roads
+                            weight: 4,       // Increased line width
+                            opacity: 0.8
+                        }
+                    }).addTo(map).bindPopup(`<b>Road:</b> ${road.name || "Unnamed Road"}`);
                 } catch (error) {
                     console.error(`Error rendering road ${index + 1}:`, error);
                 }
             });
         }
 
-        // Function to render blocks on the map
-        function renderBlocks(blocks) {
-            blocks.forEach(function(block, index) {
+        // Function to render buildings on the map
+        function renderBuildings(buildings) {
+            buildings.forEach(function(building, index) {
                 try {
-                    console.log(`Processing block ${index + 1}:`, block);  // Log each block
-                    let geojson = JSON.parse(block.geometry);  // Parse GeoJSON
-                    console.log(`Parsed GeoJSON for block ${index + 1}:`, geojson);  // Log parsed GeoJSON
+                    let geojson = building.geometry;
 
-                    // Define the style for the block
-                    let style = { color: "red", weight: 1, fillOpacity: 0.5 };
+                    if (typeof geojson === "string") {
+                        geojson = JSON.parse(geojson);
+                    }
 
-                    // Add the block to the map
-                    L.geoJSON(geojson, { style: style }).addTo(map).bindPopup(block.name || "Unnamed Block");
+                    L.geoJSON(geojson, {
+                        style: {
+                            color: "#ff6347", // Tomato color for buildings
+                            weight: 1,
+                            fillOpacity: 0.6
+                        }
+                    }).addTo(map).bindPopup(`<b>Building:</b> ${building.name || "Unnamed Building"}`);
                 } catch (error) {
-                    console.error(`Error rendering block ${index + 1}:`, error);
+                    console.error(`Error rendering building ${index + 1}:`, error);
                 }
             });
         }
 
         // Function to render the shortest path on the map
         function renderShortestPath(path) {
-            try {
-                console.log("Rendering shortest path:", path);  // Log the shortest path
-                let geojson = path;  // Use the GeoJSON directly
+            if (path) {
+                L.geoJSON(path, {
+                    style: {
+                        color: "red", // Red for the shortest path
+                        weight: 5,
+                        opacity: 0.9
+                    }
+                }).addTo(map).bindPopup("<b>Shortest Path</b>");
 
-                // Define the style for the shortest path
-                let style = { color: "blue", weight: 3 };
+                // Add markers for the starting and finishing points
+                const startIcon = L.icon({
+                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34]
+                });
 
-                // Add the shortest path to the map
-                L.geoJSON(geojson, { style: style }).addTo(map).bindPopup("Shortest Path");
-            } catch (error) {
-                console.error("Error rendering shortest path:", error);
+                const finishIcon = L.icon({
+                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png', // Corrected URL
+                    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png', // Retina support
+                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png', // Add shadow for consistency
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34]
+                });
+
+                const startPoint = path.coordinates[0];
+                const endPoint = path.coordinates[path.coordinates.length - 1];
+
+                L.marker([startPoint[1], startPoint[0]], { icon: startIcon })
+                    .addTo(map)
+                    .bindPopup("<b>Starting Point</b>")
+                    .openPopup();
+
+                L.marker([endPoint[1], endPoint[0]], { icon: finishIcon }) // Corrected icon configuration
+                    .addTo(map)
+                    .bindPopup("<b>Finishing Point</b>");
             }
         }
 
-        // Render the roads, blocks, and shortest path
-        if (roads && roads.length > 0) {
-            renderRoads(roads);
-        } else {
-            console.warn("No roads available to render.");
+        // Add a legend to the map
+        function addLegend() {
+            const legend = L.control({ position: "bottomright" });
+
+            legend.onAdd = function () {
+                const div = L.DomUtil.create("div", "legend");
+                div.innerHTML = `
+                    <i style="background: #1e90ff"></i> Roads<br>
+                    <i style="background: #ff6347"></i> Buildings<br>
+                    <i style="background: red"></i> Shortest Path<br>
+                    <i><img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" style="width: 18px; height: 18px;"></i> Starting Point<br>
+                    <i><img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png" style="width: 18px; height: 18px;"></i> Finishing Point
+                `;
+                return div;
+            };
+
+            legend.addTo(map);
         }
 
-        if (blocks && blocks.length > 0) {
-            renderBlocks(blocks);
-        } else {
-            console.warn("No blocks available to render.");
-        }
+        // Wait for the map to load and render data
+        map.on('load', function () {
+            if (roads.length > 0) renderRoads(roads);
+            if (buildings.length > 0) renderBuildings(buildings);
+            if (shortestPath) renderShortestPath(shortestPath);
+            addLegend();
+        });
 
-        if (shortestPath) {
-            renderShortestPath(shortestPath);
-        } else {
-            console.warn("No shortest path available to render.");
-        }
+        // Trigger the map load event manually
+        map.fire('load');
     </script>
 </body>
 </html>
