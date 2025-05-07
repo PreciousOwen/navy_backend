@@ -7,5 +7,23 @@
             "latitude": -6.815164,
             "longitude": 39.279939
         }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 1,
+        "fields": {
+            "name": "Main Gate-Regency Location",
+            "latitude": -6.814087,
+            "longitude": 39.279346
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 1,
+        "fields": {
+            "name": "Main Gate-UDART Location",
+            "latitude": -6.815408,
+            "longitude": 39.279553
+        }
     }
 ]
