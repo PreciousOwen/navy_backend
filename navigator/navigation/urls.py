@@ -2,8 +2,12 @@ from django.urls import path
 from . import views
 from django.conf import settings
 from django.conf.urls.static import static
+from .views import fetch_destinations
 
 urlpatterns = [
+    # Route for the index page
+    path('', views.index, name='index'),
+
     # Route for generating a route
     path('generate_route/', views.generate_route, name='generate_route'),
 
@@ -39,6 +43,9 @@ urlpatterns = [
 
     # URL for removing paths
     path('remove_paths/', views.remove_paths, name='remove_paths'),
+
+    # URL for fetching destinations
+    path('fetch_destinations/', fetch_destinations, name='fetch_destinations'),
 ]
 
 # Serve static files during development

@@ -1,0 +1,271 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QR Code Navigation</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #000;
+      color: #fff;
+    }
+
+    .container {
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar {
+      width: 20%;
+      background-color: #111;
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    .sidebar h2 {
+      margin-bottom: 20px;
+    }
+
+    .sidebar nav a {
+      display: block;
+      color: #ccc;
+      margin: 15px 0;
+      text-decoration: none;
+      padding: 8px;
+      border-radius: 6px;
+      transition: background 0.2s;
+    }
+
+    .sidebar nav a:hover {
+      background-color: #333;
+    }
+
+    .feed {
+      width: 60%;
+      padding: 20px;
+      height: 100vh;
+      overflow-y: auto;
+      border-left: 1px solid #222;
+      border-right: 1px solid #222;
+    }
+
+    .feed h2 {
+      margin-bottom: 10px;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0; top: 0;
+      width: 100%; height: 100%;
+      background-color: rgba(0,0,0,0.8);
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background-color: #1a1a1a;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 400px;
+      color: #fff;
+      text-align: center;
+    }
+
+    .close {
+      color: #fff;
+      float: right;
+      font-size: 24px;
+      cursor: pointer;
+    }
+
+    .upload-section {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .upload-section input[type="file"] {
+      margin: 10px 0;
+    }
+
+    .destination-section {
+      margin-top: 20px;
+      text-align: center;
+    }
+    .destination-section select {
+      margin: 10px 0;
+      padding: 5px;
+    }
+  </style>
+  <!-- Include Html5Qrcode library -->
+  <script src="{% static 'js/html5-qrcode.min.js' %}"></script>
+</head>
+<body>
+  <!-- Sidebar Toggle Button -->
+  <button id="sidebarToggle" class="sidebar-toggle" onclick="toggleSidebar()">☰</button>
+
+  <div class="container">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <h2>Navigator</h2>
+      <nav>
+        <a href="#" onclick="navClick('Home')">Home</a>
+        <a href="#" onclick="openQRScanner()">📷 Scan QR Code</a>
+      </nav>
+    </aside>
+
+    <!-- Feed -->
+    <main class="feed" id="feed">
+      <h2>Welcome to Navigator</h2>
+      <p>Scan a QR code to navigate to a location.</p>
+    </main>
+  </div>
+
+  <!-- QR Scanner Modal -->
+  <div id="qrModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeQRScanner()">&times;</span>
+      <h3>Scan QR Code</h3>
+      <div id="qr-reader" style="width: 100%"></div>
+    </div>
+  </div>
+
+  <!-- QR Code Upload Section -->
+  <div class="upload-section">
+    <h3>Upload QR Code</h3>
+    <input type="file" id="qr-upload" accept="image/*" />
+    <button onclick="scanUploadedQRCode()">Scan Uploaded QR Code</button>
+    <p id="upload-result" style="color: lightgreen;"></p>
+  </div>
+
+  <!-- Destination Selection Section -->
+  <div class="destination-section" id="destination-section" style="display: none;">
+    <h3>Select Destination</h3>
+    <select id="destination-select">
+      <option value="" disabled selected>Select a destination</option>
+    </select>
+    <button onclick="navigateToDestination()">Navigate</button>
+  </div>
+
+  <script>
+    function navClick(name) {
+      alert(`Navigated to ${name}`);
+    }
+
+    let qrScanner;
+    let qrData = null; // Store scanned QR code data
+    let destinations = []; // Store destination options
+
+    // Fetch destinations from the new URL
+    fetch("/navigation/fetch_destinations/")
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        console.log("Fetched destinations:", data); // Log the fetched data
+        destinations = data;
+
+        const destinationSelect = document.getElementById("destination-select");
+        destinations.forEach(destination => {
+          const option = document.createElement("option");
+          option.value = JSON.stringify(destination);
+          option.textContent = destination.name;
+          destinationSelect.appendChild(option);
+        });
+      })
+      .catch(error => console.error("Error fetching destinations:", error)); // Log any errors
+
+    function openQRScanner() {
+      document.getElementById("qrModal").style.display = "flex";
+
+      qrScanner = new Html5Qrcode("qr-reader");
+
+      qrScanner.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: 250,
+        },
+        (decodedText) => {
+          try {
+            qrData = JSON.parse(decodedText);
+            console.log("QR Code Data:", qrData);
+            document.getElementById("destination-section").style.display = "block";
+          } catch (error) {
+            console.error("Error parsing QR code data:", error);
+            alert("Invalid QR code format.");
+          } finally {
+            closeQRScanner();
+          }
+        },
+        (error) => {
+          console.log("QR Error:", error);
+        }
+      );
+    }
+
+    function closeQRScanner() {
+      if (qrScanner) {
+        qrScanner.stop().then(() => {
+          qrScanner.clear();
+        });
+      }
+      document.getElementById("qrModal").style.display = "none";
+    }
+
+    function scanUploadedQRCode() {
+      const fileInput = document.getElementById("qr-upload");
+      const resultElement = document.getElementById("upload-result");
+
+      if (fileInput.files.length === 0) {
+        resultElement.textContent = "Please upload a QR code image.";
+        return;
+      }
+
+      const file = fileInput.files[0];
+      const html5QrCode = new Html5Qrcode("qr-reader");
+
+      html5QrCode.scanFile(file, true)
+        .then(decodedText => {
+          resultElement.textContent = `QR Code Data: ${decodedText}`;
+          console.log("Decoded QR Code Data:", decodedText);
+
+          try {
+            qrData = JSON.parse(decodedText);
+            document.getElementById("destination-section").style.display = "block";
+          } catch (error) {
+            console.error("Error parsing QR code data:", error);
+            resultElement.textContent = "Invalid QR code format.";
+          }
+        })
+        .catch(err => {
+          console.error("Error scanning QR code:", err);
+          resultElement.textContent = "Failed to scan QR code.";
+        });
+    }
+
+    function navigateToDestination() {
+      const destinationSelect = document.getElementById("destination-select");
+      const selectedDestination = destinationSelect.value;
+
+      if (!selectedDestination) {
+        alert("Please select a destination.");
+        return;
+      }
+
+      const destination = JSON.parse(selectedDestination);
+      const url = `/navigation/university_blocks_roads/?start_lat=${qrData.lat}&start_lng=${qrData.lng}&end_lat=${destination.latitude}&end_lng=${destination.longitude}`;
+      console.log("Redirecting to:", url);
+      window.location.href = url;
+    }
+  </script>
+</body>
+</html>
