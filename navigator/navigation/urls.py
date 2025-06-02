@@ -5,9 +5,10 @@ from django.conf.urls.static import static
 # from .views import fetch_destinations
 from django.views.generic import TemplateView
 
+
 urlpatterns = [
     # Route for the index page
-    # path('', views.index, name='index'),
+    path('', views.index, name='index'),
 
     # Route for generating a route
     path('generate_route/', views.generate_route, name='generate_route'),

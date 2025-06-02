@@ -746,3 +746,10 @@ def university_blocks_roads(request):
         "building_data_json": building_data_json,
         "shortest_path_json": shortest_path_json_str
     })
+
+
+def index(request):
+    """
+    View to render the index page for QR code scanning.
+    """
+    return render(request, "index.html")
