@@ -25,5 +25,14 @@
             "latitude": -6.815408,
             "longitude": 39.279553
         }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 1,
+        "fields": {
+            "name": "A-Block",
+            "latitude": -6.814907,
+            "longitude": 39.279397
+        }
     }
 ]
