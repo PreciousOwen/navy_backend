@@ -2,137 +2,131 @@ import os
 import requests
 import polyline
 import folium
+import json
+import time
+import networkx as nx
+from decimal import Decimal # Used for potential float conversions from DB
+
+# Django imports
 from django.shortcuts import render, redirect
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.gis.geos import GEOSGeometry, Point as DjangoPoint, LineString as DjangoLineString # Renamed to avoid clash with Shapely
+from django.contrib.gis.db.models.functions import AsGeoJSON
+from django.db import connection
+from django.db.models import Max
+from django import forms
+
+# Shapely imports for geometric operations (crucial for graph building and nearest_points)
+from shapely.geometry import LineString as ShapelyLineString, Point as ShapelyPoint, MultiPoint as ShapelyMultiPoint
+from shapely.ops import nearest_points
+
+# Your models (ensure these are correctly defined in your models.py)
+from .models import Road, BufferedRoad, CachedRoad, DITCachedBuildings
+
+# Your forms (ensure this is correctly defined in your forms.py)
 from .forms import RouteForm
 
+# ---
+# General Utility Functions (Optional, but good practice for reusability)
+# ---
 
-# def generate_route(request):
-#     if request.method == 'POST':
-#         form = RouteForm(request.POST)
-#         if form.is_valid():
-#             start_lat = form.cleaned_data['start_lat']
-#             start_lng = form.cleaned_data['start_lng']
-#             end_lat = form.cleaned_data['end_lat']
-#             end_lng = form.cleaned_data['end_lng']
+def _get_geojson_from_db_result(geojson_string_or_dict):
+    """
+    Helper to ensure geometry is a Python dictionary, parsing if it's a string.
+    Handles potential malformed JSON by returning None.
+    """
+    if isinstance(geojson_string_or_dict, dict):
+        return geojson_string_or_dict
+    elif isinstance(geojson_string_or_dict, str):
+        try:
+            return json.loads(geojson_string_or_dict)
+        except json.JSONDecodeError as e:
+            print(f"Error decoding JSON geometry: {e}")
+            return None
+    return None # For unexpected types
 
-#             # Send a request to the OSRM API
-#             osrm_url = f"https://router.project-osrm.org/route/v1/driving/{start_lng},{start_lat};{end_lng},{end_lat}?overview=full"
-#             response = requests.get(osrm_url)
-#             data = response.json()
+def _build_networkx_graph_from_cached_roads(cached_road_queryset):
+    """
+    Builds a NetworkX graph from a queryset of CachedRoad objects.
+    Returns the graph and a list of successfully processed road data (as dicts).
+    """
+    G = nx.Graph()
+    processed_road_data = []
 
-#             # Extract the geometry (polyline)
-#             encoded_polyline = data['routes'][0]['geometry']
-#             route_coordinates = polyline.decode(encoded_polyline)
+    for road_obj in cached_road_queryset:
+        try:
+            geometry_dict = _get_geojson_from_db_result(road_obj.geometry)
+            if not geometry_dict or "coordinates" not in geometry_dict:
+                print(f"Warning: CachedRoad {road_obj.osm_id} geometry is invalid or missing 'coordinates'. Skipping.")
+                continue
 
-#             # Create the map
-#             route_map = folium.Map(location=[start_lat, start_lng], zoom_start=13)
-#             folium.PolyLine(route_coordinates, color="blue", weight=5, opacity=0.7).add_to(route_map)
-#             folium.Marker([start_lat, start_lng], popup="Start", icon=folium.Icon(color="green")).add_to(route_map)
-#             folium.Marker([end_lat, end_lng], popup="End", icon=folium.Icon(color="red")).add_to(route_map)
+            # Add to processed road data list
+            processed_road_data.append({
+                "osm_id": road_obj.osm_id,
+                "name": road_obj.name,
+                "geometry": geometry_dict # Keep as dict for template
+            })
 
-#             # Define the static folder path
-#             static_map_dir = os.path.join(os.getcwd(), 'static', 'navigation')
+            # Build NetworkX graph using Shapely geometries
+            linestring = ShapelyLineString(geometry_dict["coordinates"])
+            
+            # Iterate through points of the linestring to add edges
+            for i in range(len(linestring.coords) - 1):
+                # Use tuple(point) for NetworkX nodes to ensure hashability
+                start_node = tuple(linestring.coords[i])
+                end_node = tuple(linestring.coords[i + 1])
+                
+                # Calculate distance between Shapely Points
+                distance = ShapelyPoint(start_node).distance(ShapelyPoint(end_node))
+                G.add_edge(start_node, end_node, weight=distance)
 
-#             # Ensure the directory exists
-#             if not os.path.exists(static_map_dir):
-#                 os.makedirs(static_map_dir)
+        except Exception as e:
+            print(f"An error occurred processing CachedRoad {road_obj.osm_id} for graph: {e}. Skipping this road.")
+            # Optionally, delete the malformed entry: road_obj.delete()
+            continue
+    return G, processed_road_data
 
-#             # Define the file path
-#             map_path = os.path.join(static_map_dir, 'route_map.html')
-
-#             # Save the map
-#             route_map.save(map_path)
-
-#             # Redirect to the generated map file
-#             return redirect(f'/static/navigation/route_map.html')
-
-#     else:
-#         form = RouteForm()
-
-#     return render(request, 'navigation/map_view.html', {'form': form})
-
-
-# from django.shortcuts import render
-# from .models import OSMPoint
-
-# def map_view(request):
-#     locations = OSMPoint.objects.all()
-#     return render(request, 'map.html', {'locations': locations})
-
-
-
-from django.shortcuts import render
-from django.contrib.gis.geos import GEOSGeometry
-from django.contrib.gis.db.models.functions import AsGeoJSON
-from .models import Road
+# ---
+# 1. map_view (Basic Road Display)
+# ---
 
 def map_view(request):
+    """
+    Renders a map displaying roads from the Road model.
+    This view uses Django's GIS features for direct geometry handling.
+    """
     roads = Road.objects.annotate(geojson=AsGeoJSON("geom"))
-    road_data = list(roads.values("name", "geojson"))
-
-    # Get the first road and extract its starting point
-    first_road = roads.first()
-    marker = None  # Default value
-
-    if first_road:
-        geom = GEOSGeometry(first_road.geom.geojson)  # Convert to GEOSGeometry
-        if geom and geom.num_coords > 0:
-            marker = {"lat": geom.coords[0][1], "lng": geom.coords[0][0]}  # Extract first point
-
-    return render(request, "map.html", {"road_data": road_data, "marker": marker})
-
-
-######################################################################################
-################################     SHORTEST PATH   #################################
-
-
-from django.contrib.gis.geos import GEOSGeometry, Point
-import networkx as nx
-from .models import Road
-
-def build_graph():
-    G = nx.Graph()
-    roads = Road.objects.all()
-
+    road_data = []
     for road in roads:
-        geom = road.geom  # Get LineString geometry
-        coords = list(geom.coords)  # Convert LineString to a list of points
-        
-        for i in range(len(coords) - 1):
-            start = coords[i]
-            end = coords[i + 1]
-            distance = GEOSGeometry(Point(start)).distance(GEOSGeometry(Point(end)))  # Calculate distance
-            
-            G.add_edge(start, end, weight=distance)  # Add edge to graph
+        try:
+            # AsGeoJSON returns a string, parse it to a dictionary for JS
+            geojson_dict = json.loads(road.geojson)
+            road_data.append({"name": road.name, "geojson": geojson_dict})
+        except json.JSONDecodeError as e:
+            print(f"Error parsing GeoJSON for Road {road.id}: {e}. Skipping.")
+            continue
 
-    return G
+    first_road = roads.first()
+    marker = None
+    if first_road:
+        # GEOSGeometry can parse GeoJSON string directly
+        geom = GEOSGeometry(first_road.geom.geojson)
+        if geom and geom.num_coords > 0:
+            # Assuming first point of linestring for marker
+            marker = {"lat": geom.coords[0][1], "lng": geom.coords[0][0]}
 
+    return render(request, "map.html", {"road_data": json.dumps(road_data), "marker": marker})
 
-
-import networkx as nx
-import folium
-
-def find_shortest_path(start_lat, start_lng, end_lat, end_lng):
-    G = build_graph()
-    start = (start_lng, start_lat)
-    end = (end_lng, end_lat)
-
-    try:
-        path = nx.shortest_path(G, source=start, target=end, weight="weight")
-        return path
-    except nx.NetworkXNoPath:
-        return None
-
-
-
-from django.shortcuts import render
-from django.http import HttpResponse
-import folium
-from .forms import RouteForm
-from .models import Road
-import networkx as nx
+# ---
+# 2. generate_route (Folium Based with OSRM)
+# ---
 
 def generate_route(request):
+    """
+    Generates a route using the OSRM API (external service) and displays it on a Folium map.
+    This is a separate routing mechanism from the internal graph-based one.
+    """
     if request.method == 'POST':
         form = RouteForm(request.POST)
         if form.is_valid():
@@ -141,145 +135,187 @@ def generate_route(request):
             end_lat = form.cleaned_data['end_lat']
             end_lng = form.cleaned_data['end_lng']
 
-            # Find the shortest path based on the coordinates
-            path = find_shortest_path(start_lat, start_lng, end_lat, end_lng)
-            if path is None:
-                return render(request, 'error.html', {"message": "No path found"})
+            osrm_url = f"https://router.project-osrm.org/route/v1/driving/{start_lng},{start_lat};{end_lng},{end_lat}?overview=full"
+            try:
+                response = requests.get(osrm_url)
+                response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+                data = response.json()
 
-            # Create a folium map with the route
-            route_map = folium.Map(location=[start_lat, start_lng], zoom_start=13)
-            folium.PolyLine(path, color="blue", weight=5, opacity=0.7).add_to(route_map)
-            folium.Marker([start_lat, start_lng], popup="Start", icon=folium.Icon(color="green")).add_to(route_map)
-            folium.Marker([end_lat, end_lng], popup="End", icon=folium.Icon(color="red")).add_to(route_map)
+                if not data.get('routes'):
+                    return render(request, 'error.html', {"message": "No route found by OSRM for the given points."})
 
-            # Render the map to an HTML string
-            map_html = route_map._repr_html_()
+                encoded_polyline = data['routes'][0]['geometry']
+                route_coordinates = polyline.decode(encoded_polyline)
 
-            # Pass the HTML map string to the template
-            return render(request, 'navigation/map_view.html', {'form': form, 'map_html': map_html})
+                route_map = folium.Map(location=[start_lat, start_lng], zoom_start=13)
+                folium.PolyLine(route_coordinates, color="blue", weight=5, opacity=0.7).add_to(route_map)
+                folium.Marker([start_lat, start_lng], popup="Start", icon=folium.Icon(color="green")).add_to(route_map)
+                folium.Marker([end_lat, end_lng], popup="End", icon=folium.Icon(color="red")).add_to(route_map)
+
+                map_html = route_map._repr_html_()
+                return render(request, 'navigation/map_view.html', {'form': form, 'map_html': map_html})
+
+            except requests.exceptions.RequestException as e:
+                print(f"Error connecting to OSRM: {e}")
+                return render(request, 'error.html', {"message": f"Error connecting to routing service: {e}"})
+            except Exception as e:
+                print(f"Error processing OSRM response: {e}")
+                return render(request, 'error.html', {"message": f"An unexpected error occurred during routing: {e}"})
 
     else:
         form = RouteForm()
 
-    return render(request, 'navigation/map_view.html', {'form': form})
+    return render(request, 'navigation/map_view.html', {'form': form, 'map_html': None}) # Pass None if no map yet
 
-
-from django.db import connection  # Ensure this import is present
-import json  # Ensure this import is present
+# ---
+# 3. map_new_polygons (Buildings and Roads from raw OSM tables)
+# ---
 
 def map_new_polygons(request):
-    # Define the bounding box for the specific area (centered around -6.814328, 39.281655)
-    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216)  # (min_lng, min_lat, max_lng, max_lat)
+    """
+    Fetches and displays building polygons and road data directly from raw OSM tables
+    (planet_osm_polygon and planet_osm_ways) within a defined bounding box.
+    """
+    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216) # (min_lng, min_lat, max_lng, max_lat)
 
-    # Query to transform and fetch up to 1000 building polygons in WGS84 within the bounding box
-    with connection.cursor() as cursor:
-        cursor.execute(f"""
-            SELECT osm_id, name, landuse, building, ST_AsGeoJSON(ST_Transform(way, 4326)) AS geometry
-            FROM planet_osm_polygon
-            WHERE building IS NOT NULL  -- Filter for building polygons
-            AND ST_Intersects(
-                ST_Transform(way, 4326),
-                ST_MakeEnvelope({case_study_bbox[0]}, {case_study_bbox[1]}, {case_study_bbox[2]}, {case_study_bbox[3]}, 4326)
-            )
-            LIMIT 1000;  -- Fetch up to 1000 building polygons
-        """)
-        building_rows = cursor.fetchall()
+    building_data = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(f"""
+                SELECT osm_id, name, landuse, building, ST_AsGeoJSON(ST_Transform(way, 4326)) AS geometry
+                FROM planet_osm_polygon
+                WHERE building IS NOT NULL
+                AND ST_Intersects(
+                    ST_Transform(way, 4326),
+                    ST_MakeEnvelope({case_study_bbox[0]}, {case_study_bbox[1]}, {case_study_bbox[2]}, {case_study_bbox[3]}, 4326)
+                )
+                LIMIT 1000;
+            """)
+            building_rows = cursor.fetchall()
+            for row in building_rows:
+                geom_dict = _get_geojson_from_db_result(row[4])
+                if geom_dict:
+                    building_data.append({
+                        "osm_id": row[0],
+                        "name": row[1] or None,
+                        "landuse": row[2] or None,
+                        "building": row[3] or None,
+                        "geometry": geom_dict
+                    })
+    except Exception as e:
+        print(f"Error fetching building data for map_new_polygons: {e}")
+        return render(request, "error.html", {"message": f"Error fetching building data: {e}"})
 
-    # Query to fetch road data from the planet_osm_ways table and transform to EPSG:4326
-    with connection.cursor() as cursor:
-        cursor.execute(f"""
-            SELECT id, tags::jsonb->>'name' AS name, ST_AsGeoJSON(ST_Transform(ST_MakeLine(ARRAY(
-                SELECT ST_SetSRID(ST_MakePoint(n.lon, n.lat), 4326)
-                FROM unnest(nodes) AS node_id
-                JOIN planet_osm_nodes n ON n.id = node_id
-            )), 4326)) AS geometry
-            FROM planet_osm_ways
-            WHERE tags::jsonb ? 'highway'  -- Filter for roads
-            LIMIT 0;  -- Fetch up to 1000 road data
-        """)
-        road_rows = cursor.fetchall()
+    road_data = []
+    try:
+        with connection.cursor() as cursor:
+            # Note: The original query for roads from planet_osm_ways was complex and might be slow.
+            # This version uses a simpler approach if 'nodes' column is directly available or
+            # assumes 'way' column for LineString geometry like planet_osm_line.
+            # If planet_osm_ways stores nodes as an array of IDs, the original query might be necessary.
+            # For this rewrite, I'm adapting to a common case where 'way' is a geometry column.
+            # If your 'planet_osm_ways' table has a 'way' column of type geometry, this should work.
+            # Otherwise, you'll need to re-insert your original complex query for 'planet_osm_ways'.
+            cursor.execute(f"""
+                SELECT osm_id, name, highway, ST_AsGeoJSON(ST_Transform(way, 4326)) AS geometry
+                FROM planet_osm_line
+                WHERE highway IS NOT NULL
+                AND ST_Intersects(
+                    ST_Transform(way, 4326),
+                    ST_MakeEnvelope({case_study_bbox[0]}, {case_study_bbox[1]}, {case_study_bbox[2]}, {case_study_bbox[3]}, 4326)
+                )
+                LIMIT 1000;
+            """)
+            road_rows = cursor.fetchall()
+            for row in road_rows:
+                geom_dict = _get_geojson_from_db_result(row[3])
+                if geom_dict:
+                    road_data.append({
+                        "osm_id": row[0],
+                        "name": row[1] or None,
+                        "highway": row[2] or None,
+                        "geometry": geom_dict
+                    })
+    except Exception as e:
+        print(f"Error fetching road data for map_new_polygons: {e}")
+        return render(request, "error.html", {"message": f"Error fetching road data: {e}"})
 
-    # Prepare building data for the template
-    building_data = [
-        {
-            "osm_id": row[0],
-            "name": row[1] or None,  # Replace None with null for JavaScript compatibility
-            "landuse": row[2] or None,
-            "building": row[3] or None,
-            "geometry": row[4]
-        }
-        for row in building_rows
-    ]
-
-    # Prepare road data for the template
-    road_data = [
-        {
-            "osm_id": row[0],
-            "name": row[1] or None,  # Replace None with null for JavaScript compatibility
-            "geometry": row[2]
-        }
-        for row in road_rows
-    ]
-
-    # Serialize the data to JSON
     building_data_json = json.dumps(building_data)
     road_data_json = json.dumps(road_data)
 
-    # Debugging: Log the serialized JSON data
-    print("Serialized Building Data JSON:", building_data_json[:500])  # Log only the first 500 characters for brevity
-    print("Serialized Road Data JSON:", road_data_json[:500])  # Log only the first 500 characters for brevity
+    print("Serialized Building Data JSON (first 500 chars):", building_data_json[:500])
+    print("Serialized Road Data JSON (first 500 chars):", road_data_json[:500])
 
     return render(request, "map_new_polygons.html", {
         "building_data_json": building_data_json,
         "road_data_json": road_data_json
     })
 
-from .models import BufferedRoad  # Ensure BufferedRoad is imported
+# ---
+# 4. map_view_polygons (Buffered Roads)
+# ---
 
 def map_view_polygons(request):
     """
-    View to render road polygons on the map.
+    View to render road polygons on the map from BufferedRoad model.
+    Assumes BufferedRoad.geom is a PolygonField.
     """
     buffered_roads = BufferedRoad.objects.annotate(geojson=AsGeoJSON("geom"))
-    road_data = list(buffered_roads.values("name", "geojson"))
+    road_data = []
+    for road in buffered_roads:
+        try:
+            # AsGeoJSON returns a string, parse it to a dictionary for JS
+            geometry_dict = json.loads(road.geojson)
+            road_data.append({
+                "name": road.name or "Unnamed Road",
+                "geojson": geometry_dict
+            })
+        except json.JSONDecodeError as e:
+            print(f"Error decoding GeoJSON for BufferedRoad {road.id}: {e}. Skipping.")
+            continue # Skip this road if its GeoJSON is malformed
+        except Exception as e:
+            print(f"An unexpected error occurred processing BufferedRoad {road.id}: {e}. Skipping.")
+            continue
 
-    # Replace None with "Unnamed Road" for JavaScript compatibility
-    for road in road_data:
-        road["name"] = road["name"] or "Unnamed Road"
+    return render(request, "map_polygons.html", {"road_data": json.dumps(road_data)})
 
-    return render(request, "map_polygons.html", {"road_data": road_data})
-
-from django.db import connection  # Ensure this import is present
-import json  # Ensure this import is present
-import time  # Import time for measuring execution time
-from .models import CachedRoad  # Import the CachedRoad model
+# ---
+# 5. map_roads (Cached Road Data)
+# ---
 
 def map_roads(request):
-    print("Starting map_roads view...")  # Debugging: Start of the view
-    start_time = time.time()  # Record the start time
+    """
+    Fetches and displays road data from the CachedRoad model.
+    Populates CachedRoad from raw OSM data if the cache is empty.
+    Ensures geometry is stored as a JSON string in CachedRoad.
+    """
+    print("Starting map_roads view...")
+    start_time = time.time()
 
-    # Define the bounding box for the specific area
-    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216)  # (min_lng, min_lat, max_lng, max_lat)
+    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216)
 
-    # Check if cached roads exist
-    cached_roads = CachedRoad.objects.all()
-    if cached_roads.exists():
+    road_data = []
+    cached_roads_count = CachedRoad.objects.count()
+
+    if cached_roads_count > 0:
         print("Using cached road data...")
-        road_data = [
-            {
-                "osm_id": road.osm_id,
-                "name": road.name,
-                "geometry": road.geometry
-            }
-            for road in cached_roads
-        ]
+        for road_obj in CachedRoad.objects.all():
+            geom_dict = _get_geojson_from_db_result(road_obj.geometry)
+            if geom_dict:
+                road_data.append({
+                    "osm_id": road_obj.osm_id,
+                    "name": road_obj.name,
+                    "geometry": geom_dict # Keep as dict for template
+                })
+            else:
+                print(f"Warning: Malformed geometry in CachedRoad {road_obj.osm_id}. Skipping.")
+                # Option to delete malformed data: road_obj.delete()
     else:
-        # Query to fetch road data from the planet_osm_ways table
+        print("Executing SQL query to fetch road data and populate cache...")
+        query_start_time = time.time()
         try:
-            print("Executing SQL query to fetch road data...")  # Debugging: Before executing the query
-            query_start_time = time.time()  # Record query start time
-
             with connection.cursor() as cursor:
+                # Re-inserting your original complex query for planet_osm_ways
                 cursor.execute(f"""
                     SELECT id, tags::jsonb->>'name' AS name, ST_AsGeoJSON(ST_Transform(ST_MakeLine(ARRAY(
                         SELECT ST_SetSRID(ST_MakePoint(n.lon / 1e7, n.lat / 1e7), 4326)
@@ -296,67 +332,60 @@ def map_roads(request):
                         )),
                         ST_MakeEnvelope({case_study_bbox[0]}, {case_study_bbox[1]}, {case_study_bbox[2]}, {case_study_bbox[3]}, 4326)
                     )
-                    LIMIT 2000;  -- Fetch up to 2000 road data
+                    LIMIT 2000;
                 """)
                 road_rows = cursor.fetchall()
 
-            query_end_time = time.time()  # Record query end time
-            print(f"SQL query executed successfully. Time taken: {query_end_time - query_start_time:.2f} seconds")  # Debugging: Query execution time
-            print(f"Number of roads fetched: {len(road_rows)}")  # Debugging: Number of rows fetched
+            print(f"SQL query executed. Time taken: {time.time() - query_start_time:.2f} seconds")
+            print(f"Number of roads fetched: {len(road_rows)}")
+
+            print("Saving queried roads to the database cache...")
+            for row in road_rows:
+                geometry_string = row[2] # ST_AsGeoJSON returns a string
+                geom_dict = _get_geojson_from_db_result(geometry_string)
+                if geom_dict:
+                    CachedRoad.objects.update_or_create(
+                        osm_id=row[0],
+                        defaults={"name": row[1] or "Unnamed Road", "geometry": geometry_string}
+                    )
+                    road_data.append({
+                        "osm_id": row[0],
+                        "name": row[1] or "Unnamed Road",
+                        "geometry": geom_dict # Convert back to dict for template
+                    })
+                else:
+                    print(f"Warning: Geometry for OSM ID {row[0]} is malformed after DB fetch. Skipping save.")
 
         except Exception as e:
-            print(f"Error during SQL query execution: {e}")  # Debugging: Log any SQL errors
+            print(f"Error during SQL query execution for map_roads: {e}")
             return render(request, "error.html", {"message": "Error fetching road data."})
 
-        # Save the queried roads to the CachedRoad model
-        print("Saving queried roads to the database...")
-        road_data = []
-        for row in road_rows:
-            road_data.append({
-                "osm_id": row[0],
-                "name": row[1] or "Unnamed Road",  # Replace None with "Unnamed Road" for JavaScript compatibility
-                "geometry": row[2]
-            })
-            CachedRoad.objects.create(osm_id=row[0], name=row[1], geometry=row[2])
-
-    # Serialize the data to JSON
     try:
-        print("Serializing road data to JSON...")  # Debugging: Before serialization
-        serialization_start_time = time.time()  # Record serialization start time
-
         road_data_json = json.dumps(road_data)
-
-        serialization_end_time = time.time()  # Record serialization end time
-        print(f"Road data serialized successfully. Time taken: {serialization_end_time - serialization_start_time:.2f} seconds")  # Debugging: Serialization time
-
     except Exception as e:
-        print(f"Error during JSON serialization: {e}")  # Debugging: Log any serialization errors
+        print(f"Error during JSON serialization in map_roads: {e}")
         return render(request, "error.html", {"message": "Error serializing road data."})
 
-    end_time = time.time()  # Record the end time
-    print(f"map_roads view completed successfully. Total time taken: {end_time - start_time:.2f} seconds")  # Debugging: Total execution time
+    print(f"map_roads view completed. Total time: {time.time() - start_time:.2f} seconds")
+    return render(request, "map_roads.html", {"road_data_json": road_data_json})
 
-    return render(request, "map_roads.html", {
-        "road_data_json": road_data_json
-    })
-
-from django.db import connection  # Ensure this import is present
-import json  # Ensure this import is present
-import time  # Import time for measuring execution time
-from decimal import Decimal
-from django.http import JsonResponse  # Use JsonResponse for better error handling
+# ---
+# 6. map_nodes (OSM Nodes)
+# ---
 
 def map_nodes(request):
-    print("Starting map_nodes view...")  # Debugging: Start of the view
-    start_time = time.time()  # Record the start time
+    """
+    Fetches and displays individual OSM nodes within a defined bounding box.
+    """
+    print("Starting map_nodes view...")
+    start_time = time.time()
 
-    # Define the bounding box for the specific area
-    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216)  # (min_lng, min_lat, max_lng, max_lat)
+    case_study_bbox = (39.271655, -6.816286, 39.284623, -6.797216)
 
-    # Query to fetch nodes within the bounding box
+    node_data = []
     try:
-        print("Executing SQL query to fetch nodes...")  # Debugging: Before executing the query
-        query_start_time = time.time()  # Record query start time
+        print("Executing SQL query to fetch nodes...")
+        query_start_time = time.time()
 
         with connection.cursor() as cursor:
             cursor.execute(f"""
@@ -366,68 +395,48 @@ def map_nodes(request):
                     ST_SetSRID(ST_MakePoint(lon / 1e7, lat / 1e7), 4326),
                     ST_MakeEnvelope({case_study_bbox[0]}, {case_study_bbox[1]}, {case_study_bbox[2]}, {case_study_bbox[3]}, 4326)
                 )
-                LIMIT 2000;  -- Fetch up to 2000 nodes
+                LIMIT 2000;
             """)
             node_rows = cursor.fetchall()
 
-        query_end_time = time.time()  # Record query end time
-        print(f"SQL query executed successfully. Time taken: {query_end_time - query_start_time:.2f} seconds")  # Debugging: Query execution time
-        print(f"Number of nodes fetched: {len(node_rows)}")  # Debugging: Number of rows fetched
+        print(f"SQL query executed. Time: {time.time() - query_start_time:.2f} seconds")
+        print(f"Number of nodes fetched: {len(node_rows)}")
 
-    except Exception as e:
-        print(f"Error during SQL query execution: {e}")  # Debugging: Log any SQL errors
-        return JsonResponse({"error": "Error fetching node data."}, status=500)
+        print("Processing node data...")
+        for row in node_rows:
+            tags = row[3]
+            # Ensure tags is a dict. If it's a JSON string, parse it.
+            if isinstance(tags, str):
+                try:
+                    tags = json.loads(tags)
+                except json.JSONDecodeError:
+                    tags = {} # Default to empty dict if malformed
+            elif not isinstance(tags, dict):
+                tags = {} # Default to empty dict if not a string or dict
 
-    # Prepare node data for the template
-    try:
-        print("Processing node data...")  # Debugging: Before processing node data
-        processing_start_time = time.time()  # Record processing start time
-
-        node_data = [
-            {
+            node_data.append({
                 "id": row[0],
-                "latitude": float(row[1]),  # Convert Decimal to float
-                "longitude": float(row[2]),  # Convert Decimal to float
-                "tags": row[3]
-            }
-            for row in node_rows
-        ]
-
-        processing_end_time = time.time()  # Record processing end time
-        print(f"Node data processed successfully. Time taken: {processing_end_time - processing_start_time:.2f} seconds")  # Debugging: Processing time
+                "latitude": float(row[1]),
+                "longitude": float(row[2]),
+                "tags": tags
+            })
 
     except Exception as e:
-        print(f"Error during node data processing: {e}")  # Debugging: Log any processing errors
-        return JsonResponse({"error": "Error processing node data."}, status=500)
+        print(f"Error fetching or processing node data in map_nodes: {e}")
+        return JsonResponse({"error": f"Error fetching node data: {e}"}, status=500)
 
-    # Serialize the data to JSON
     try:
-        print("Serializing node data to JSON...")  # Debugging: Before serialization
-        serialization_start_time = time.time()  # Record serialization start time
-
         node_data_json = json.dumps(node_data)
-
-        serialization_end_time = time.time()  # Record serialization end time
-        print(f"Node data serialized successfully. Time taken: {serialization_end_time - serialization_start_time:.2f} seconds")  # Debugging: Serialization time
-
     except Exception as e:
-        print(f"Error during JSON serialization: {e}")  # Debugging: Log any serialization errors
+        print(f"Error during JSON serialization in map_nodes: {e}")
         return JsonResponse({"error": "Error serializing node data."}, status=500)
 
-    end_time = time.time()  # Record the end time
-    print(f"map_nodes view completed successfully. Total time taken: {end_time - start_time:.2f} seconds")  # Debugging: Total execution time
+    print(f"map_nodes view completed. Total time: {time.time() - start_time:.2f} seconds")
+    return render(request, "map_nodes.html", {"node_data_json": node_data_json})
 
-    return render(request, "map_nodes.html", {
-        "node_data_json": node_data_json
-    })
-
-from .models import CachedRoad  # Ensure CachedRoad is imported
-from django.http import JsonResponse
-from django import forms
-import networkx as nx
-from shapely.geometry import LineString, Point, MultiPoint  # Ensure MultiPoint is imported
-import json  # Ensure json is imported
-from shapely.ops import nearest_points  # Ensure nearest_points is imported
+# ---
+# 7. ShortestPathForm and university_roads (Internal Pathfinding)
+# ---
 
 class ShortestPathForm(forms.Form):
     start_lat = forms.FloatField(label="Start Latitude")
@@ -436,259 +445,254 @@ class ShortestPathForm(forms.Form):
     end_lng = forms.FloatField(label="End Longitude")
 
 def university_roads(request):
-    print("Fetching roads from CachedRoad table...")  # Debugging: Start of the view
-    start_time = time.time()  # Record the start time
+    """
+    Displays cached university roads and calculates the shortest path between
+    user-provided start and end coordinates using NetworkX.
+    """
+    print("Starting university_roads view...")
+    start_time = time.time()
 
-    # Fetch all roads from the CachedRoad table
-    try:
-        cached_roads = CachedRoad.objects.all()
-        road_data = [
-            {
-                "osm_id": road.osm_id,
-                "name": road.name,
-                "geometry": road.geometry  # Use the geometry directly
-            }
-            for road in cached_roads
-        ]
-        print(f"Number of roads fetched: {len(road_data)}")  # Debugging: Number of roads fetched
-    except Exception as e:
-        print(f"Error fetching roads from CachedRoad: {e}")  # Debugging: Log any errors
-        return render(request, "error.html", {"message": "Error fetching roads from CachedRoad."})
+    # Build graph from CachedRoads
+    G, road_data = _build_networkx_graph_from_cached_roads(CachedRoad.objects.all())
+    print(f"Graph built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
 
-    # If the request method is POST, calculate the shortest path
-    if request.method == "POST":
-        form = ShortestPathForm(request.POST)
-        if form.is_valid():
-            start_lat = form.cleaned_data["start_lat"]
-            start_lng = form.cleaned_data["start_lng"]
-            end_lat = form.cleaned_data["end_lat"]
-            end_lng = form.cleaned_data["end_lng"]
+    shortest_path_geojson = None
+    form = ShortestPathForm(request.POST or None)
 
-            # Build a graph from the CachedRoad table
-            G = nx.Graph()
-            for road in road_data:
-                try:
-                    geojson = road["geometry"]
+    if request.method == "POST" and form.is_valid():
+        start_lat = form.cleaned_data["start_lat"]
+        start_lng = form.cleaned_data["start_lng"]
+        end_lat = form.cleaned_data["end_lat"]
+        end_lng = form.cleaned_data["end_lng"]
 
-                    # Parse the geometry if it is a string
-                    if isinstance(geojson, str):
-                        geojson = json.loads(geojson)
+        try:
+            if not G.nodes():
+                return render(request, "error.html", {"message": "No road data available to calculate path. Graph is empty."})
 
-                    # Ensure the geometry is valid
-                    if not geojson or "coordinates" not in geojson:
-                        print(f"Invalid geometry for road {road['osm_id']}: {geojson}")
-                        continue
+            start_point = ShapelyPoint(start_lng, start_lat)
+            end_point = ShapelyPoint(end_lng, end_lat)
+            
+            graph_nodes_shapely = ShapelyMultiPoint([ShapelyPoint(node) for node in G.nodes()])
 
-                    linestring = LineString(geojson["coordinates"])  # Use parsed geometry
-                    for i in range(len(linestring.coords) - 1):
-                        start = Point(linestring.coords[i])
-                        end = Point(linestring.coords[i + 1])
-                        distance = start.distance(end)
-                        G.add_edge(tuple(start.coords[0]), tuple(end.coords[0]), weight=distance)
-                except Exception as e:
-                    print(f"Error processing road {road['osm_id']}: {e}")
+            # Find the nearest nodes in the graph to the start and end points
+            _, nearest_start_shapely = nearest_points(start_point, graph_nodes_shapely)
+            _, nearest_end_shapely = nearest_points(end_point, graph_nodes_shapely)
 
-            # Find the nearest nodes to the start and end points
-            try:
-                start_point = Point(start_lng, start_lat)
-                end_point = Point(end_lng, end_lat)
-                graph_nodes = MultiPoint([Point(node) for node in G.nodes])  # Convert graph nodes to MultiPoint
-                nearest_start = nearest_points(start_point, graph_nodes)[1]
-                nearest_end = nearest_points(end_point, graph_nodes)[1]
+            nearest_start_node_tuple = tuple(nearest_start_shapely.coords[0])
+            nearest_end_node_tuple = tuple(nearest_end_shapely.coords[0])
 
-                # Calculate the shortest path
-                path = nx.shortest_path(G, source=tuple(nearest_start.coords[0]), target=tuple(nearest_end.coords[0]), weight="weight")
-                path_coords = [list(coord) for coord in path]
-                print(f"Shortest path: {path_coords}")
-            except nx.NetworkXNoPath:
-                return render(request, "error.html", {"message": "No path found between the given points."})
-            except Exception as e:
-                print(f"Error finding shortest path: {e}")
-                return render(request, "error.html", {"message": "Error finding shortest path."})
+            # Ensure found nearest nodes are actually in the graph
+            if nearest_start_node_tuple not in G:
+                print(f"Warning: Nearest start node {nearest_start_node_tuple} not found in graph nodes after nearest_points.")
+                return render(request, "error.html", {"message": "Could not find a valid start point on the map."})
+            if nearest_end_node_tuple not in G:
+                print(f"Warning: Nearest end node {nearest_end_node_tuple} not found in graph nodes after nearest_points.")
+                return render(request, "error.html", {"message": "Could not find a valid end point on the map."})
 
-            # Serialize the shortest path to GeoJSON
+            path = nx.shortest_path(G, source=nearest_start_node_tuple, target=nearest_end_node_tuple, weight="weight")
+            path_coords = [list(coord) for coord in path]
+            print(f"Shortest path calculated with {len(path_coords)} points.")
+
             shortest_path_geojson = {
                 "type": "LineString",
                 "coordinates": path_coords
             }
 
-            # Render the map with the shortest path
-            road_data_json = json.dumps(road_data)
-            shortest_path_json = json.dumps(shortest_path_geojson)
-            return render(request, "university_roads.html", {
-                "road_data_json": road_data_json,
-                "shortest_path_json": shortest_path_json
-            })
+        except nx.NetworkXNoPath:
+            print("No path found between the given points.")
+            return render(request, "error.html", {"message": "No path found between the given points."})
+        except Exception as e:
+            print(f"Error calculating shortest path in university_roads: {e}")
+            return render(request, "error.html", {"message": f"Error calculating shortest path: {e}"})
 
-    else:
-        form = ShortestPathForm()
-
-    # Serialize the road data to JSON
     try:
         road_data_json = json.dumps(road_data)
+        shortest_path_json_str = json.dumps(shortest_path_geojson) if shortest_path_geojson else "null"
     except Exception as e:
-        print(f"Error serializing road data: {e}")  # Debugging: Log any serialization errors
-        return render(request, "error.html", {"message": "Error serializing road data."})
+        print(f"Error serializing data for template in university_roads: {e}")
+        return render(request, "error.html", {"message": "Error preparing map data."})
 
-    end_time = time.time()  # Record the end time
-    print(f"university_roads view completed successfully. Total time taken: {end_time - start_time:.2f} seconds")  # Debugging: Total execution time
-
+    print(f"university_roads view completed. Total time: {time.time() - start_time:.2f} seconds")
     return render(request, "university_roads.html", {
         "road_data_json": road_data_json,
+        "shortest_path_json": shortest_path_json_str,
         "form": form
     })
 
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.contrib.gis.geos import LineString
-from .models import CachedRoad  # Use CachedRoad instead of Road
-import json
-from django.db.models import Max  # Import Max for generating unique osm_id
+# ---
+# 8. add_path (User Drawn Paths)
+# ---
 
 @csrf_exempt
 def add_path(request):
     """
-    View to add a new path to the CachedRoad model.
+    View to add a new path (drawn by user) to the CachedRoad model.
+    Ensures geometry is stored as a JSON string.
     """
     if request.method == 'POST':
         try:
-            # Parse the coordinates from the request body
             data = json.loads(request.body)
             coordinates = data.get('coordinates')
-            name = data.get('name', 'Unnamed Path')  # Default name if not provided
+            name = data.get('name', 'Unnamed Path')
 
             if not coordinates or len(coordinates) < 2:
                 return JsonResponse({'error': 'Invalid coordinates. At least two points are required.'}, status=400)
 
-            # Generate a unique osm_id
             max_osm_id = CachedRoad.objects.aggregate(Max('osm_id'))['osm_id__max'] or 0
             osm_id = max_osm_id + 1
 
-            # Create a GeoJSON LineString geometry
-            geojson_geometry = {
+            geojson_geometry_dict = {
                 "type": "LineString",
                 "coordinates": coordinates
             }
+            
+            # Store it as a JSON string in the database
+            geojson_geometry_string = json.dumps(geojson_geometry_dict)
 
-            # Save the new path to the CachedRoad model
-            CachedRoad.objects.create(osm_id=osm_id, name=name, geometry=geojson_geometry)
-            return JsonResponse({'message': 'Path added successfully.'}, status=201)
+            CachedRoad.objects.create(osm_id=osm_id, name=name, geometry=geojson_geometry_string)
+            return JsonResponse({'message': 'Path added successfully.', 'osm_id': osm_id}, status=201)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON in request body.'}, status=400)
         except Exception as e:
+            print(f"Error adding path: {e}")
             return JsonResponse({'error': f'Error adding path: {str(e)}'}, status=500)
     else:
         return JsonResponse({'error': 'Invalid request method. Use POST.'}, status=405)
 
+# ---
+# 9. remove_paths (Clear Cached Paths)
+# ---
 
 @csrf_exempt
 def remove_paths(request):
     """
     View to remove paths from the CachedRoad model.
+    Can remove a specific path by osm_id or all paths.
     """
     if request.method == 'POST':
         try:
-            # Parse the request body for an optional osm_id
             data = json.loads(request.body) if request.body else {}
             osm_id = data.get('osm_id')
 
             if osm_id:
-                # Delete the path with the specified osm_id
                 deleted_count, _ = CachedRoad.objects.filter(osm_id=osm_id).delete()
                 if deleted_count > 0:
                     return JsonResponse({'message': f'Path with osm_id {osm_id} removed successfully.'}, status=200)
                 else:
                     return JsonResponse({'error': f'No path found with osm_id {osm_id}.'}, status=404)
             else:
-                # Delete all paths if no osm_id is provided
                 CachedRoad.objects.all().delete()
                 return JsonResponse({'message': 'All paths removed successfully.'}, status=200)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON in request body.'}, status=400)
         except Exception as e:
+            print(f"Error removing paths: {e}")
             return JsonResponse({'error': f'Error removing paths: {str(e)}'}, status=500)
     else:
         return JsonResponse({'error': 'Invalid request method. Use POST.'}, status=405)
 
-from .models import DITCachedBuildings  # Import the CachedBlocks model
+# ---
+# 10. university_blocks (Cached Buildings)
+# ---
 
 @csrf_exempt
 def university_blocks(request):
     """
-    View to fetch and save building blocks within the specified bounding box.
+    Fetches and saves building blocks within the specified bounding box into DITCachedBuildings.
+    Uses cached data if available. Ensures geometry is stored as a JSON string.
     """
-    print("Fetching building blocks within the case study area...")  # Debugging: Start of the view
-    case_study_bbox = (39.273264, -6.817276, 39.288407, -6.807517)  # Updated bounding box
+    print("Starting university_blocks view...")
+    case_study_bbox = (39.273264, -6.817276, 39.288407, -6.807517)
 
-    # Check if cached blocks exist
+    block_data = []
     cached_blocks_count = DITCachedBuildings.objects.count()
-    if cached_blocks_count >= 2000:
+
+    if cached_blocks_count >= 2000: # Use cached data if enough blocks are present
         print("Using cached building blocks...")
-        block_data = [
-            {
-                "osm_id": block.osm_id,
-                "name": block.name,
-                "geometry": block.geometry
-            }
-            for block in DITCachedBuildings.objects.all()
-        ]
+        for block_obj in DITCachedBuildings.objects.all():
+            geom_dict = _get_geojson_from_db_result(block_obj.geometry)
+            if geom_dict:
+                block_data.append({
+                    "osm_id": block_obj.osm_id,
+                    "name": block_obj.name,
+                    "geometry": geom_dict # Keep as dict for template
+                })
+            else:
+                print(f"Warning: Malformed geometry in DITCachedBuildings {block_obj.osm_id}. Skipping.")
+                # Option to delete malformed entry: block_obj.delete()
     else:
-        # Query to fetch building blocks from the database
+        print("Executing SQL query to fetch building blocks and populate cache...")
         try:
-            print("Executing SQL query to fetch building blocks...")  # Debugging: Before executing the query
             with connection.cursor() as cursor:
                 cursor.execute(f"""
                     SELECT osm_id, name, landuse, building, ST_AsGeoJSON(ST_Transform(way, 4326)) AS geometry
                     FROM planet_osm_polygon
-                    WHERE building IS NOT NULL  -- Filter for building polygons
+                    WHERE building IS NOT NULL
                     AND ST_Intersects(
                         ST_Transform(way, 4326),
                         ST_MakeEnvelope({case_study_bbox[0]}, {case_study_bbox[1]}, {case_study_bbox[2]}, {case_study_bbox[3]}, 4326)
                     )
-                    LIMIT 5000;  -- Fetch up to 2000 building polygons
+                    LIMIT 5000;
                 """)
                 block_rows = cursor.fetchall()
 
-            print(f"Number of blocks fetched: {len(block_rows)}")  # Debugging: Number of rows fetched
+            print(f"Number of blocks fetched: {len(block_rows)}")
+            print("Saving queried blocks to the database cache...")
 
-            # Save the queried blocks to the CachedBlocks model
-            print("Saving queried blocks to the database...")
-            block_data = []
             for row in block_rows:
-                block_data.append({
-                    "osm_id": row[0],
-                    "name": row[1] or "Unnamed Block",  # Replace None with "Unnamed Block" for JavaScript compatibility
-                    "geometry": row[4]
-                })
-                # Avoid duplicate entries
-                DITCachedBuildings.objects.update_or_create(
-                    osm_id=row[0],
-                    defaults={"name": row[1], "geometry": row[4]}
-                )
+                geometry_string = row[4] # ST_AsGeoJSON returns a string
+                geom_dict = _get_geojson_from_db_result(geometry_string)
+                if geom_dict:
+                    DITCachedBuildings.objects.update_or_create(
+                        osm_id=row[0],
+                        defaults={"name": row[1], "geometry": geometry_string}
+                    )
+                    block_data.append({
+                        "osm_id": row[0],
+                        "name": row[1] or "Unnamed Block",
+                        "geometry": geom_dict # Convert back to dict for template
+                    })
+                else:
+                    print(f"Warning: Geometry for OSM ID {row[0]} is malformed after DB fetch. Skipping save.")
 
         except Exception as e:
-            print(f"Error during SQL query execution: {e}")  # Debugging: Log any SQL errors
+            print(f"Error during SQL query execution for university_blocks: {e}")
             return render(request, "error.html", {"message": "Error fetching building blocks."})
 
-    # Serialize the block data to JSON
     try:
-        print("Serializing block data to JSON...")  # Debugging: Before serialization
         block_data_json = json.dumps(block_data)
-        print("Block data serialized successfully.")  # Debugging: Serialization success
+        print("Block data serialized successfully.")
     except Exception as e:
-        print(f"Error during JSON serialization: {e}")  # Debugging: Log any serialization errors
+        print(f"Error during JSON serialization in university_blocks: {e}")
         return render(request, "error.html", {"message": "Error serializing block data."})
 
-    return render(request, "university_blocks.html", {
-        "block_data_json": block_data_json
-    })
+    return render(request, "university_blocks.html", {"block_data_json": block_data_json})
 
-from .models import DITCachedBuildings, CachedRoad  # Import the required models
+# ---
+# 11. university_blocks_roads (Combined View with Pathfinding)
+# ---
 
 def university_blocks_roads(request):
-    print("Fetching buildings and roads for university_blocks_roads...")  # Debugging: Start of the view
+    """
+    Fetches cached buildings and roads, and calculates a shortest path if coordinates are provided.
+    This view is robust to malformed geometry data.
+    """
+    print("Starting university_blocks_roads view...")
 
-    # Fetch buildings and roads
+    # Fetch buildings
     buildings = DITCachedBuildings.objects.all()
-    building_data = [{"osm_id": b.osm_id, "name": b.name, "geometry": b.geometry} for b in buildings]
-    roads = CachedRoad.objects.all()
-    road_data = [{"osm_id": r.osm_id, "name": r.name, "geometry": r.geometry} for r in roads]
+    building_data = []
+    for b in buildings:
+        geom_dict = _get_geojson_from_db_result(b.geometry)
+        if geom_dict:
+            building_data.append({"osm_id": b.osm_id, "name": b.name, "geometry": geom_dict})
+        else:
+            print(f"Warning: Malformed geometry in DITCachedBuildings {b.osm_id}. Skipping.")
+            # Option to delete: b.delete()
+
+    # Fetch roads and build graph
+    G, road_data = _build_networkx_graph_from_cached_roads(CachedRoad.objects.all())
+    print(f"Graph in university_blocks_roads built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
 
     # Get start and end coordinates from query parameters
     start_lat = request.GET.get("start_lat")
@@ -696,74 +700,49 @@ def university_blocks_roads(request):
     end_lat = request.GET.get("end_lat")
     end_lng = request.GET.get("end_lng")
 
+    shortest_path_geojson = None
+
     if start_lat and start_lng and end_lat and end_lng:
         try:
-            # Build a graph and calculate the shortest path
-            G = nx.Graph()
-            for road in road_data:
-                geojson = json.loads(road["geometry"])
-                linestring = LineString(geojson["coordinates"])
-                for i in range(len(linestring.coords) - 1):
-                    start = Point(linestring.coords[i])
-                    end = Point(linestring.coords[i + 1])
-                    distance = start.distance(end)
-                    G.add_edge(tuple(start.coords[0]), tuple(end.coords[0]), weight=distance)
+            if not G.nodes():
+                print("Error calculating shortest path: Graph is empty (no valid roads processed).")
+            else:
+                start_point = ShapelyPoint(float(start_lng), float(start_lat))
+                end_point = ShapelyPoint(float(end_lng), float(end_lat))
+                
+                graph_nodes_shapely = ShapelyMultiPoint([ShapelyPoint(node) for node in G.nodes()])
 
-            start_point = Point(float(start_lng), float(start_lat))
-            end_point = Point(float(end_lng), float(end_lat))
-            graph_nodes = MultiPoint([Point(node) for node in G.nodes])
-            nearest_start = nearest_points(start_point, graph_nodes)[1]
-            nearest_end = nearest_points(end_point, graph_nodes)[1]
+                _, nearest_start_shapely = nearest_points(start_point, graph_nodes_shapely)
+                _, nearest_end_shapely = nearest_points(end_point, graph_nodes_shapely)
 
-            path = nx.shortest_path(G, source=tuple(nearest_start.coords[0]), target=tuple(nearest_end.coords[0]), weight="weight")
-            path_coords = [list(coord) for coord in path]
+                nearest_start_node_tuple = tuple(nearest_start_shapely.coords[0])
+                nearest_end_node_tuple = tuple(nearest_end_shapely.coords[0])
 
-            shortest_path_geojson = {"type": "LineString", "coordinates": path_coords}
+                if nearest_start_node_tuple not in G or nearest_end_node_tuple not in G:
+                    print(f"Warning: One or both nearest nodes not found in graph. Start: {nearest_start_node_tuple}, End: {nearest_end_node_tuple}")
+                    # This implies the points are too far from the existing graph or graph is too sparse.
+                    # No path can be found in this scenario.
+                else:
+                    path = nx.shortest_path(G, source=nearest_start_node_tuple, target=nearest_end_node_tuple, weight="weight")
+                    path_coords = [list(coord) for coord in path]
+                    shortest_path_geojson = {"type": "LineString", "coordinates": path_coords}
+                    print(f"Shortest path calculated with {len(path_coords)} points.")
+
+        except nx.NetworkXNoPath:
+            print("Error calculating shortest path: No path found between the given points.")
         except Exception as e:
-            print(f"Error calculating shortest path: {e}")
-            return render(request, "error.html", {"message": "Error calculating shortest path."})
-    else:
-        shortest_path_geojson = None
+            print(f"Error calculating shortest path in university_blocks_roads: {e}")
+    
+    try:
+        road_data_json = json.dumps(road_data)
+        building_data_json = json.dumps(building_data)
+        shortest_path_json_str = json.dumps(shortest_path_geojson) if shortest_path_geojson else "null"
+    except Exception as e:
+        print(f"Error serializing data for template in university_blocks_roads: {e}")
+        return render(request, "error.html", {"message": "Error preparing map data for display."})
 
     return render(request, "university_blocks_roads.html", {
-        "road_data_json": json.dumps(road_data),
-        "building_data_json": json.dumps(building_data),
-        "shortest_path_json": json.dumps(shortest_path_geojson) if shortest_path_geojson else None,
+        "road_data_json": road_data_json,
+        "building_data_json": building_data_json,
+        "shortest_path_json": shortest_path_json_str
     })
-
-from django.shortcuts import render
-# ...existing code...
-
-def index(request):
-    """
-    View to render the index page for QR code scanning.
-    """
-    return render(request, "index.html")
-
-from django.http import JsonResponse
-from .models import Location
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
-def fetch_destinations(request):
-    """
-    View to fetch all destinations from the Location model.
-    """
-    try:
-        locations = Location.objects.all()
-        data = [
-            {
-                "name": location.name,
-                "latitude": location.latitude,
-                "longitude": location.longitude,
-            }
-            for location in locations
-        ]
-        logger.debug(f"Fetched destinations: {data}")  # Log the fetched data
-        return JsonResponse(data, safe=False)
-    except Exception as e:
-        logger.error(f"Error fetching destinations: {str(e)}")  # Log any errors
-        return JsonResponse({"error": f"Error fetching destinations: {str(e)}"}, status=500)
