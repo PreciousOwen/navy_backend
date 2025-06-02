@@ -6,7 +6,7 @@ import json
 import time
 import networkx as nx
 from decimal import Decimal # Used for potential float conversions from DB
-
+from .models import *
 # Django imports
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse
@@ -753,3 +753,32 @@ def index(request):
     View to render the index page for QR code scanning.
     """
     return render(request, "index.html")
+
+
+
+from django.http import JsonResponse
+from .models import Location
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+def fetch_destinations(request):
+    """
+    View to fetch all destinations from the Location model.
+    """
+    try:
+        locations = Location.objects.all()
+        data = [
+            {
+                "name": location.name,
+                "latitude": location.latitude,
+                "longitude": location.longitude,
+            }
+            for location in locations
+        ]
+        logger.debug(f"Fetched destinations: {data}")  # Log the fetched data
+        return JsonResponse(data, safe=False)
+    except Exception as e:
+        logger.error(f"Error fetching destinations: {str(e)}")  # Log any errors
+        return JsonResponse({"error": f"Error fetching destinations: {str(e)}"}, status=500)

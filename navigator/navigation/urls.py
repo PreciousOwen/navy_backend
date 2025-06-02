@@ -4,6 +4,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 # from .views import fetch_destinations
 from django.views.generic import TemplateView
+from .views import *
 
 
 urlpatterns = [
@@ -47,7 +48,7 @@ urlpatterns = [
     path('remove_paths/', views.remove_paths, name='remove_paths'),
 
     # URL for fetching destinations
-    # path('fetch_destinations/', fetch_destinations, name='fetch_destinations'),
+    path('fetch_destinations/', fetch_destinations, name='fetch_destinations'),
 
     # Intro page
     path('intro/', TemplateView.as_view(template_name="intro.html"), name='intro'),
