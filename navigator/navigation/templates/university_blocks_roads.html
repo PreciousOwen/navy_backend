@@ -37,12 +37,12 @@
             height: 18px;
             float: left;
             margin-right: 8px;
-            opacity: 0.7; /* Keep some opacity for consistency with the original code */
+            opacity: 0.7;
         }
-        .legend img { /* Added style for legend images */
+        .legend img {
             width: 18px;
             height: 18px;
-            vertical-align: middle; /* Align image with text */
+            vertical-align: middle;
             margin-right: 8px;
         }
     </style>
@@ -57,9 +57,8 @@
     <div id="map"></div>
 
     <script>
-        console.log("JavaScript is running!");  // Debugging statement
+        console.log("JavaScript is running!");
 
-        // Parse road and building data
         let roads = [];
         let buildings = [];
         let shortestPath = null;
@@ -75,40 +74,51 @@
             console.error("Error parsing data:", error);
         }
 
-        // Initialize the map
         let map;
         if (shortestPath && shortestPath.coordinates.length > 0) {
-            // Center the map on the initial position with maximum zoom
             const initialPosition = shortestPath.coordinates[0];
-            map = L.map('map').setView([initialPosition[1], initialPosition[0]], 18); // Maximum zoom level
+            map = L.map('map', {
+                zoom: 18, // Start at a zoom level similar to Google Maps in the screenshot
+                zoomSnap: 0.1, // Allow fractional zooming like Google Maps
+                zoomDelta: 0.5, // Smaller zoom steps for smoother zooming
+                zoomAnimation: true, // Enable zoom animation (already default, but explicit)
+                minZoom: 10, // Prevent zooming out too far
+                maxZoom: 20, // Allow zooming in closer, like Google Maps
+                touchRotate: false, // Disable rotation for a more Google Maps-like feel
+                boxZoom: false // Disable box zoom for simplicity
+            }).setView([initialPosition[1], initialPosition[0]], 18);
         } else {
-            // Default map view (set to a location within Dar es Salaam, if not already)
-            map = L.map('map').setView([-6.814328, 39.281655], 15); // Example: University of Dar es Salaam area
+            map = L.map('map', {
+                zoom: 18,
+                zoomSnap: 0.1,
+                zoomDelta: 0.5,
+                zoomAnimation: true,
+                minZoom: 10,
+                maxZoom: 20,
+                touchRotate: false,
+                boxZoom: false
+            }).setView([-6.814328, 39.281655], 15);
         }
 
-        // Add a tile layer to the map
-        // Using OpenStreetMap, which has a distinct look from Google Maps.
-        // For Google Maps-like base maps, you'd need Google's API key and specific tile layers.
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
+        // Use CartoDB Positron tiles to mimic Google Maps' clean look
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
         }).addTo(map);
 
-        // Function to render roads on the map
         function renderRoads(roads) {
             roads.forEach(function(road, index) {
                 try {
                     let geojson = road.geometry;
-
                     if (typeof geojson === "string") {
                         geojson = JSON.parse(geojson);
                     }
-
                     L.geoJSON(geojson, {
                         style: {
-                            // Changed to a lighter grey/white to mimic Google Maps roads
-                            color: "#dddddd", // Light grey
-                            weight: 5,       // Slightly thicker for visibility
-                            opacity: 0.9     // High opacity
+                            color: "#dddddd",
+                            weight: 5,
+                            opacity: 0.9
                         }
                     }).addTo(map).bindPopup(`<b>Road:</b> ${road.name || "Unnamed Road"}`);
                 } catch (error) {
@@ -117,22 +127,18 @@
             });
         }
 
-        // Function to render buildings on the map
         function renderBuildings(buildings) {
             buildings.forEach(function(building, index) {
                 try {
                     let geojson = building.geometry;
-
                     if (typeof geojson === "string") {
                         geojson = JSON.parse(geojson);
                     }
-
                     L.geoJSON(geojson, {
                         style: {
-                            // Buildings often appear in a subtle tone or off-white on Google Maps
-                            color: "#aaaaaa", // Darker grey for outline
+                            color: "#b0b0b0",
                             weight: 1,
-                            fillColor: "#e0e0e0", // Lighter grey for fill
+                            fillColor: "#f5f5f5",
                             fillOpacity: 0.7
                         }
                     }).addTo(map).bindPopup(`<b>Building:</b> ${building.name || "Unnamed Building"}`);
@@ -142,21 +148,16 @@
             });
         }
 
-        // Function to render the shortest path on the map
         function renderShortestPath(path) {
             if (path) {
-                // Using a bright blue to mimic the active route on Google Maps
                 L.geoJSON(path, {
                     style: {
-                        color: "#4285F4", // Google Maps blue
-                        weight: 7,         // Thicker to stand out
-                        opacity: 0.95      // Almost opaque
+                        color: "#4285F4",
+                        weight: 7,
+                        opacity: 0.95
                     }
                 }).addTo(map).bindPopup("<b>Shortest Path</b>");
 
-                // Add markers for the starting and finishing points
-                // Standard Leaflet markers are fine, or you can use custom icons for specific points.
-                // Google Maps uses different pins, which would require custom icon images.
                 const startIcon = L.icon({
                     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
                     iconSize: [25, 41],
@@ -165,16 +166,11 @@
                 });
 
                 const finishIcon = L.icon({
-                    // You might want to use a different colored marker for the end point.
-                    // Leaflet doesn't have a built-in red marker, but you can find or create one.
-                    // For now, let's use a standard blue one for simplicity or find a red one if available.
-                    // If you want a truly red marker, you'd need to provide a custom image for it.
-                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', // A common red marker URL
+                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
                     iconSize: [25, 41],
                     iconAnchor: [12, 41],
                     popupAnchor: [1, -34]
                 });
-
 
                 const startPoint = path.coordinates[0];
                 const endPoint = path.coordinates[path.coordinates.length - 1];
@@ -190,26 +186,22 @@
             }
         }
 
-        // Add a legend to the map
         function addLegend() {
             const legend = L.control({ position: "bottomright" });
-
             legend.onAdd = function () {
                 const div = L.DomUtil.create("div", "legend");
                 div.innerHTML = `
                     <i style="background: #dddddd"></i> Roads<br>
-                    <i style="background: #e0e0e0; border: 1px solid #aaaaaa;"></i> Buildings<br>
+                    <i style="background: #f5f5f5; border: 1px solid #b0b0b0;"></i> Buildings<br>
                     <i style="background: #4285F4"></i> Shortest Path<br>
                     <img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" alt="Starting Point Icon"> Starting Point<br>
                     <img src="https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" alt="Finishing Point Icon"> Finishing Point
                 `;
                 return div;
             };
-
             legend.addTo(map);
         }
 
-        // Wait for the map to load and render data
         map.on('load', function () {
             if (roads.length > 0) renderRoads(roads);
             if (buildings.length > 0) renderBuildings(buildings);
@@ -217,7 +209,6 @@
             addLegend();
         });
 
-        // Trigger the map load event manually
         map.fire('load');
     </script>
 </body>
