@@ -97,18 +97,18 @@ if DATABASE_ENGINE == 'django.db.backends.sqlite3':
     DATABASES = {
         'default': {
             'ENGINE': DATABASE_ENGINE,
-            'NAME': str(BASE_DIR / os.getenv('DATABASE_NAME', 'db.sqlite3')),
+            'NAME': str(BASE_DIR / os.getenv('DB_NAME', 'db.sqlite3')),
         }
     }
 else:
     DATABASES = {
         'default': {
             'ENGINE': DATABASE_ENGINE,
-            'NAME': os.getenv('DATABASE_NAME', 'osm_data'),
-            'USER': os.getenv('DATABASE_USER', 'postgres'),
-            'PASSWORD': os.getenv('DATABASE_PASSWORD', 'OWEN'),
-            'HOST': os.getenv('DATABASE_HOST', '172.31.24.82'),
-            'PORT': os.getenv('DATABASE_PORT', '5432'),
+            'NAME': os.getenv('DB_NAME', 'osm_data'),
+            'USER': os.getenv('DB_USER', 'postgres'),
+            'PASSWORD': os.getenv('DB_PASSWORD', ''),
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
             'OPTIONS': {
                 'charset': 'utf8mb4',
             } if 'mysql' in DATABASE_ENGINE else {}

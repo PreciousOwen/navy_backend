@@ -7,21 +7,21 @@ echo "Starting Django Ledger application..."
 # Wait for database to be ready (if using PostgreSQL or MySQL)
 if [ "$DATABASE_ENGINE" = "django.db.backends.postgresql" ] || [ "$DATABASE_ENGINE" = "django.contrib.gis.db.backends.postgis" ]; then
     echo "Waiting for PostgreSQL..."
-    until nc -z $DATABASE_HOST $DATABASE_PORT; do
+    until nc -z $DB_HOST $DB_PORT; do
         echo "PostgreSQL is unavailable - sleeping"
         sleep 1
     done
     echo "PostgreSQL is up - continuing..."
 
     # Additional check using pg_isready
-    until pg_isready -h $DATABASE_HOST -p $DATABASE_PORT -U $DATABASE_USER; do
+    until pg_isready -h $DB_HOST -p $DB_PORT -U $DB_USER; do
         echo "PostgreSQL is not ready - sleeping"
         sleep 1
     done
     echo "PostgreSQL is ready!"
 elif [ "$DATABASE_ENGINE" = "django.db.backends.mysql" ]; then
     echo "Waiting for MySQL..."
-    until nc -z $DATABASE_HOST $DATABASE_PORT; do
+    until nc -z $DB_HOST $DB_PORT; do
         echo "MySQL is unavailable - sleeping"
         sleep 1
     done

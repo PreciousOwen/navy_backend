@@ -62,11 +62,11 @@ WSGI_APPLICATION = "navigator.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": os.getenv("DATABASE_ENGINE", "django.db.backends.postgresql"),
-        "NAME": os.getenv("DATABASE_NAME", "osm_data"),
-        "USER": os.getenv("DATABASE_USER", "postgres"),
-        "PASSWORD": os.getenv("DATABASE_PASSWORD", ""),
-        "HOST": os.getenv("DATABASE_HOST", "localhost"),
-        "PORT": os.getenv("DATABASE_PORT", "5432"),
+        "NAME": os.getenv("DB_NAME", "osm_data"),
+        "USER": os.getenv("DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
 
