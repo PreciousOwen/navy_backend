@@ -18,7 +18,7 @@ services:
 
   # PostgreSQL Database
   db:
-    image: postgres:15-alpine
+    image: postgis/postgis:15-3.4
     environment:
       POSTGRES_DB: ${DATABASE_NAME}
       POSTGRES_USER: ${DATABASE_USER}

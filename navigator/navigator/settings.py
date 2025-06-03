@@ -92,6 +92,8 @@ WSGI_APPLICATION = "navigator.wsgi.application"
 DATABASE_ENGINE = os.getenv('DATABASE_ENGINE', 'django.db.backends.postgresql')
 
 if DATABASE_ENGINE == 'django.db.backends.sqlite3':
+    # Remove 'django.contrib.gis' and 'leaflet' if using SQLite
+    INSTALLED_APPS = [app for app in INSTALLED_APPS if app not in ['django.contrib.gis', 'leaflet']]
     DATABASES = {
         'default': {
             'ENGINE': DATABASE_ENGINE,
