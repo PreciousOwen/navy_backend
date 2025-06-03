@@ -102,9 +102,9 @@ else:
     DATABASES = {
         'default': {
             'ENGINE': DATABASE_ENGINE,
-            'NAME': os.getenv('DATABASE_NAME', 'django_ledger_db'),
-            'USER': os.getenv('DATABASE_USER', 'django_ledger_user'),
-            'PASSWORD': os.getenv('DATABASE_PASSWORD', ''),
+            'NAME': os.getenv('DATABASE_NAME', 'osm_data'),
+            'USER': os.getenv('DATABASE_USER', 'postgres'),
+            'PASSWORD': os.getenv('DATABASE_PASSWORD', 'OWEN'),
             'HOST': os.getenv('DATABASE_HOST', 'localhost'),
             'PORT': os.getenv('DATABASE_PORT', '5432'),
             'OPTIONS': {
