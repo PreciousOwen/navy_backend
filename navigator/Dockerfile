@@ -27,11 +27,11 @@ RUN pip install --upgrade pip
 
 # Copy requirements first for better caching
 COPY requirements.txt /app/
-COPY swagger_requirements.txt /app/
+# COPY swagger_requirements.txt /app/
 
 # Install Python dependencies
 RUN pip install -r requirements.txt
-RUN pip install -r swagger_requirements.txt
+# RUN pip install -r swagger_requirements.txt
 
 # Copy project files
 COPY . /app/
