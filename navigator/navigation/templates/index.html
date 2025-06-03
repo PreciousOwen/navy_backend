@@ -3,76 +3,112 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>QR Navigator</title>
   <style>
     * {
       box-sizing: border-box;
+      margin: 0;
+      padding: 0;
     }
 
     body {
-      margin: 0;
-      font-family: 'Segoe UI', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background-color: #121212;
       color: #ffffff;
+      min-height: 100vh;
+      overflow-x: hidden;
       display: flex;
-      height: 100vh;
-      overflow: hidden;
+      flex-direction: column;
+    }
+
+    /* Header with Hamburger Menu */
+    header {
+      background-color: #1f1f1f;
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: fixed;
+      width: 100%;
+      z-index: 1000;
+      top: 0;
+    }
+
+    .hamburger {
+      display: none;
+      font-size: 24px;
+      background: none;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      padding: 10px;
     }
 
     .sidebar {
-      width: 250px;
+      position: fixed;
+      top: 0;
+      left: -100%;
+      width: 80%;
+      max-width: 250px;
+      height: 100%;
       background-color: #1f1f1f;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
+      padding: 60px 15px 20px;
+      transition: left 0.3s ease;
+      z-index: 999;
+    }
+
+    .sidebar.open {
+      left: 0;
     }
 
     .sidebar h2 {
+      font-size: 20px;
       margin-bottom: 20px;
-      font-size: 22px;
     }
 
     .sidebar nav a {
       display: block;
       color: #ccc;
-      margin: 15px 0;
+      padding: 12px;
       text-decoration: none;
-      padding: 10px;
+      font-size: 16px;
       border-radius: 5px;
-      transition: background 0.3s;
+      margin: 10px 0;
+      transition: background 0.2s;
     }
 
-    .sidebar nav a:hover {
+    .sidebar nav a:hover,
+    .sidebar nav a:focus {
       background-color: #333;
     }
 
     .main-content {
       flex: 1;
+      padding: 70px 15px 20px;
       display: flex;
       justify-content: center;
-      align-items: center;
+      align-items: flex-start;
       overflow-y: auto;
-      padding: 40px;
     }
 
     .card {
       background-color: #1e1e1e;
       border-radius: 10px;
-      padding: 30px;
-      max-width: 500px;
+      padding: 20px;
       width: 100%;
-      box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+      max-width: 400px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
     }
 
     .card h2 {
       text-align: center;
-      margin-bottom: 20px;
+      font-size: 24px;
+      margin-bottom: 15px;
     }
 
     .section {
-      margin-bottom: 25px;
+      margin-bottom: 20px;
       text-align: center;
     }
 
@@ -80,11 +116,12 @@
     select,
     button {
       width: 100%;
-      margin-top: 10px;
-      padding: 10px;
+      padding: 12px;
       border: none;
       border-radius: 6px;
       font-size: 16px;
+      margin-top: 10px;
+      touch-action: manipulation;
     }
 
     button {
@@ -92,49 +129,80 @@
       color: white;
       cursor: pointer;
       transition: background 0.2s;
+      font-weight: 500;
     }
 
-    button:hover {
+    button:hover,
+    button:focus {
       background-color: #1565c0;
     }
 
     #upload-result {
       margin-top: 10px;
-      color: lightgreen;
+      color: #76ff03;
       font-size: 14px;
+      min-height: 20px;
     }
 
     .modal {
       display: none;
       position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.9);
       z-index: 1000;
-      left: 0; top: 0;
-      width: 100%; height: 100%;
-      background-color: rgba(0, 0, 0, 0.85);
       justify-content: center;
       align-items: center;
     }
 
     .modal-content {
       background-color: #1a1a1a;
-      padding: 20px;
+      padding: 15px;
       border-radius: 10px;
       width: 90%;
       max-width: 400px;
-      color: #fff;
-      text-align: center;
+      position: relative;
     }
 
     .close {
-      float: right;
+      position: absolute;
+      top: 10px;
+      right: 15px;
       font-size: 24px;
+      color: #fff;
       cursor: pointer;
     }
 
+    #qr-reader {
+      width: 100%;
+      max-height: 60vh;
+    }
+
+    /* Mobile Styles */
     @media (max-width: 768px) {
-      .sidebar {
-        width: 200px;
+      .hamburger {
+        display: block;
+      }
+
+      .main-content {
+        padding: 60px 10px 10px;
+      }
+
+      .card {
         padding: 15px;
+      }
+
+      .card h2 {
+        font-size: 20px;
+      }
+
+      input[type="file"],
+      select,
+      button {
+        font-size: 14px;
+        padding: 10px;
       }
 
       .sidebar h2 {
@@ -143,94 +211,73 @@
 
       .sidebar nav a {
         font-size: 14px;
-        padding: 8px;
-      }
-
-      .main-content {
-        padding: 20px;
-      }
-
-      .card {
-        padding: 20px;
-      }
-
-      input[type="file"],
-      select,
-      button {
-        font-size: 14px;
-        padding: 8px;
+        padding: 10px;
       }
     }
 
     @media (max-width: 480px) {
-      .sidebar {
-        width: 150px;
-        padding: 10px;
-      }
-
-      .sidebar h2 {
-        font-size: 16px;
-      }
-
-      .sidebar nav a {
-        font-size: 12px;
-        padding: 6px;
-      }
-
-      .main-content {
-        padding: 10px;
-      }
-
       .card {
-        padding: 15px;
+        padding: 10px;
+      }
+
+      .card h2 {
+        font-size: 18px;
       }
 
       input[type="file"],
       select,
       button {
-        font-size: 12px;
-        padding: 6px;
+        font-size: 13px;
+        padding: 8px;
       }
 
       .modal-content {
-        padding: 15px;
+        width: 95%;
+        padding: 10px;
+      }
+
+      #qr-reader {
+        max-height: 50vh;
       }
     }
   </style>
-  <script src="{% static 'js/html5-qrcode.min.js' %}"></script>
+  <script src="{% static 'js/html5-qrcode.min.js' %}" defer></script>
 </head>
 <body>
+  <!-- Header -->
+  <header>
+    <h1 style="font-size: 20px;">QR Navigator</h1>
+    <button class="hamburger" aria-label="Toggle menu" onclick="toggleSidebar()">☰</button>
+  </header>
 
   <!-- Sidebar -->
-  <aside class="sidebar">
-    <div>
-      <h2>Navigator</h2>
-      <nav>
-        <a href="#" onclick="navClick('Home')">🏠 Home</a>
-        <a href="#" onclick="openQRScanner()">📷 Scan QR Code</a>
-      </nav>
-    </div>
-    <small>© 2025 QRNav</small>
+  <aside class="sidebar" id="sidebar">
+    <h2>Navigator</h2>
+    <nav>
+      <a href="#" onclick="navClick('Home'); toggleSidebar()">🏠 Home</a>
+      <a href="#" onclick="openQRScanner(); toggleSidebar()">📷 Scan QR Code</a>
+    </nav>
+    <small style="position: absolute; bottom: 20px;">© 2025 QRNav</small>
   </aside>
 
   <!-- Main Content -->
   <div class="main-content">
     <div class="card">
       <h2>Welcome to Navigator</h2>
-      <p style="text-align:center;">Scan a QR code or upload one to navigate.</p>
+      <p style="text-align: center; font-size: 14px;">Scan a QR code or upload one to navigate.</p>
 
       <!-- Upload QR Code -->
       <div class="section">
         <h4>📁 Upload QR Code</h4>
-        <input type="file" id="qr-upload" accept="image/*" />
+        <input type="file" id="qr-upload" accept="image/*" aria-label="Upload QR code image" />
         <button onclick="scanUploadedQRCode()">Scan Uploaded QR</button>
-        <p id="upload-result"></p>
+        <p id="upload-result" role="status"></p>
       </div>
 
       <!-- Destination Section -->
-      <div class="section" id="destination-section" style="display:none;">
+      <div class="section" id="destination-section" style="display: none;">
         <h4>🧭 Select Destination</h4>
-        <select id="destination-select">
+        <select id="destination-select" aria-label="Select destination">
           <option value="" disabled selected>Select a destination</option>
         </select>
         <button onclick="navigateToDestination()">Navigate</button>
@@ -241,18 +288,19 @@
   <!-- QR Scanner Modal -->
   <div id="qrModal" class="modal">
     <div class="modal-content">
-      <span class="close" onclick="closeQRScanner()">&times;</span>
+      <span class="close" onclick="closeQRScanner()" aria-label="Close QR scanner">×</span>
       <h3>Scan QR Code</h3>
-      <div id="qr-reader" style="width: 100%"></div>
+      <div id="qr-reader"></div>
     </div>
   </div>
 
-  <!-- JS Scripts -->
+  <!-- JavaScript -->
   <script>
     let qrScanner;
     let qrData = null;
     let destinations = [];
 
+    // Fetch destinations
     fetch("/navigation/fetch_destinations/")
       .then(res => res.json())
       .then(data => {
@@ -264,19 +312,26 @@
           option.textContent = dest.name;
           select.appendChild(option);
         });
-      });
+      })
+      .catch(err => console.error("Fetch error:", err));
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById("sidebar");
+      sidebar.classList.toggle("open");
+    }
 
     function navClick(name) {
       alert(`Navigated to ${name}`);
     }
 
     function openQRScanner() {
-      document.getElementById("qrModal").style.display = "flex";
+      const modal = document.getElementById("qrModal");
+      modal.style.display = "flex";
       qrScanner = new Html5Qrcode("qr-reader");
 
       qrScanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: 250 },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
           try {
             qrData = JSON.parse(decodedText);
@@ -287,12 +342,12 @@
           }
         },
         (err) => console.log("QR Error:", err)
-      );
+      ).catch(err => console.error("QR Scanner start error:", err));
     }
 
     function closeQRScanner() {
       if (qrScanner) {
-        qrScanner.stop().then(() => qrScanner.clear());
+        qrScanner.stop().then(() => qrScanner.clear()).catch(err => console.error("QR Scanner stop error:", err));
       }
       document.getElementById("qrModal").style.display = "none";
     }
@@ -321,6 +376,7 @@
         })
         .catch(err => {
           resultElement.textContent = "Failed to scan QR code.";
+          console.error("Scan error:", err);
         });
     }
 
@@ -335,7 +391,15 @@
       const url = `/navigation/university_blocks_roads/?start_lat=${qrData.lat}&start_lng=${qrData.lng}&end_lat=${destination.latitude}&end_lng=${destination.longitude}`;
       window.location.href = url;
     }
-  </script>
 
+    // Close sidebar when clicking outside on mobile
+    document.addEventListener("click", (e) => {
+      const sidebar = document.getElementById("sidebar");
+      const hamburger = document.querySelector(".hamburger");
+      if (sidebar.classList.contains("open") && !sidebar.contains(e.target) && !hamburger.contains(e.target)) {
+        sidebar.classList.remove("open");
+      }
+    });
+  </script>
 </body>
 </html>
