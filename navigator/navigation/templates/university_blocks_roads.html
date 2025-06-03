@@ -6,7 +6,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>University Roads and Buildings</title>
 
-    <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
 
@@ -38,7 +37,13 @@
             height: 18px;
             float: left;
             margin-right: 8px;
-            opacity: 0.7;
+            opacity: 0.7; /* Keep some opacity for consistency with the original code */
+        }
+        .legend img { /* Added style for legend images */
+            width: 18px;
+            height: 18px;
+            vertical-align: middle; /* Align image with text */
+            margin-right: 8px;
         }
     </style>
 </head>
@@ -77,11 +82,13 @@
             const initialPosition = shortestPath.coordinates[0];
             map = L.map('map').setView([initialPosition[1], initialPosition[0]], 18); // Maximum zoom level
         } else {
-            // Default map view
-            map = L.map('map').setView([-6.814328, 39.281655], 15);
+            // Default map view (set to a location within Dar es Salaam, if not already)
+            map = L.map('map').setView([-6.814328, 39.281655], 15); // Example: University of Dar es Salaam area
         }
 
         // Add a tile layer to the map
+        // Using OpenStreetMap, which has a distinct look from Google Maps.
+        // For Google Maps-like base maps, you'd need Google's API key and specific tile layers.
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
@@ -98,9 +105,10 @@
 
                     L.geoJSON(geojson, {
                         style: {
-                            color: "#1e90ff", // Dodger blue for roads
-                            weight: 4,       // Increased line width
-                            opacity: 0.8
+                            // Changed to a lighter grey/white to mimic Google Maps roads
+                            color: "#dddddd", // Light grey
+                            weight: 5,       // Slightly thicker for visibility
+                            opacity: 0.9     // High opacity
                         }
                     }).addTo(map).bindPopup(`<b>Road:</b> ${road.name || "Unnamed Road"}`);
                 } catch (error) {
@@ -121,9 +129,11 @@
 
                     L.geoJSON(geojson, {
                         style: {
-                            color: "#ff6347", // Tomato color for buildings
+                            // Buildings often appear in a subtle tone or off-white on Google Maps
+                            color: "#aaaaaa", // Darker grey for outline
                             weight: 1,
-                            fillOpacity: 0.6
+                            fillColor: "#e0e0e0", // Lighter grey for fill
+                            fillOpacity: 0.7
                         }
                     }).addTo(map).bindPopup(`<b>Building:</b> ${building.name || "Unnamed Building"}`);
                 } catch (error) {
@@ -135,15 +145,18 @@
         // Function to render the shortest path on the map
         function renderShortestPath(path) {
             if (path) {
+                // Using a bright blue to mimic the active route on Google Maps
                 L.geoJSON(path, {
                     style: {
-                        color: "red", // Red for the shortest path
-                        weight: 5,
-                        opacity: 0.9
+                        color: "#4285F4", // Google Maps blue
+                        weight: 7,         // Thicker to stand out
+                        opacity: 0.95      // Almost opaque
                     }
                 }).addTo(map).bindPopup("<b>Shortest Path</b>");
 
                 // Add markers for the starting and finishing points
+                // Standard Leaflet markers are fine, or you can use custom icons for specific points.
+                // Google Maps uses different pins, which would require custom icon images.
                 const startIcon = L.icon({
                     iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
                     iconSize: [25, 41],
@@ -152,13 +165,16 @@
                 });
 
                 const finishIcon = L.icon({
-                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png', // Corrected URL
-                    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png', // Retina support
-                    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png', // Add shadow for consistency
+                    // You might want to use a different colored marker for the end point.
+                    // Leaflet doesn't have a built-in red marker, but you can find or create one.
+                    // For now, let's use a standard blue one for simplicity or find a red one if available.
+                    // If you want a truly red marker, you'd need to provide a custom image for it.
+                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', // A common red marker URL
                     iconSize: [25, 41],
                     iconAnchor: [12, 41],
                     popupAnchor: [1, -34]
                 });
+
 
                 const startPoint = path.coordinates[0];
                 const endPoint = path.coordinates[path.coordinates.length - 1];
@@ -168,7 +184,7 @@
                     .bindPopup("<b>Starting Point</b>")
                     .openPopup();
 
-                L.marker([endPoint[1], endPoint[0]], { icon: finishIcon }) // Corrected icon configuration
+                L.marker([endPoint[1], endPoint[0]], { icon: finishIcon })
                     .addTo(map)
                     .bindPopup("<b>Finishing Point</b>");
             }
@@ -181,11 +197,11 @@
             legend.onAdd = function () {
                 const div = L.DomUtil.create("div", "legend");
                 div.innerHTML = `
-                    <i style="background: #1e90ff"></i> Roads<br>
-                    <i style="background: #ff6347"></i> Buildings<br>
-                    <i style="background: red"></i> Shortest Path<br>
-                    <i><img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" style="width: 18px; height: 18px;"></i> Starting Point<br>
-                    <i><img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-red.png" style="width: 18px; height: 18px;"></i> Finishing Point
+                    <i style="background: #dddddd"></i> Roads<br>
+                    <i style="background: #e0e0e0; border: 1px solid #aaaaaa;"></i> Buildings<br>
+                    <i style="background: #4285F4"></i> Shortest Path<br>
+                    <img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" alt="Starting Point Icon"> Starting Point<br>
+                    <img src="https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" alt="Finishing Point Icon"> Finishing Point
                 `;
                 return div;
             };
