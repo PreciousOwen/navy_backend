@@ -16,7 +16,7 @@ django-postgres-extensions==0.9.3
 fiona==1.10.1
 folium==0.19.5
 fonttools==4.56.0
-GDAL==3.8.4
+GDAL
 geographiclib==2.0
 geopandas==1.0.1
 geopy==2.4.1
