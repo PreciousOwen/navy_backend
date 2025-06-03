@@ -5,7 +5,18 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>QR Navigator</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer" defer />
   <style>
+    :root {
+      --primary-color: #00e5ff; /* Cyan for scanning theme */
+      --accent-color: #ff00ff; /* Magenta for highlights */
+      --success-color: #76ff03; /* Neon green for success */
+      --bg-color: #0d0d0d; /* Dark background */
+      --card-bg: #1a1a1a; /* Card background */
+      --text-color: #ffffff;
+      --sidebar-bg: #151515;
+    }
+
     * {
       box-sizing: border-box;
       margin: 0;
@@ -14,17 +25,37 @@
 
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background-color: #121212;
-      color: #ffffff;
+      background: linear-gradient(135deg, var(--bg-color), #1e1e1e);
+      color: var(--text-color);
       min-height: 100vh;
       overflow-x: hidden;
       display: flex;
       flex-direction: column;
+      position: relative;
     }
 
-    /* Header with Hamburger Menu */
+    /* Background Particles Animation */
+    .particles {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: -1;
+      background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg"%3E%3Ccircle cx="10" cy="10" r="2" fill="%2300e5ff" opacity="0.3"/%3E%3C/svg%3E');
+      animation: float 20s infinite linear;
+    }
+
+    @keyframes float {
+      0% { transform: translateY(0) translateX(0); }
+      50% { transform: translateY(-20px) translateX(10px); }
+      100% { transform: translateY(0) translateX(0); }
+    }
+
+    /* Header */
     header {
-      background-color: #1f1f1f;
+      background: linear-gradient(to right, var(--primary-color), #0081cb);
       padding: 15px;
       display: flex;
       justify-content: space-between;
@@ -32,7 +63,14 @@
       position: fixed;
       width: 100%;
       z-index: 1000;
-      top: 0;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+    }
+
+    header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .hamburger {
@@ -40,22 +78,29 @@
       font-size: 24px;
       background: none;
       border: none;
-      color: #fff;
+      color: var(--text-color);
       cursor: pointer;
       padding: 10px;
+      transition: transform 0.2s;
     }
 
+    .hamburger:active {
+      transform: scale(0.9);
+    }
+
+    /* Sidebar */
     .sidebar {
       position: fixed;
       top: 0;
       left: -100%;
       width: 80%;
-      max-width: 250px;
+      max-width: 260px;
       height: 100%;
-      background-color: #1f1f1f;
+      background: var(--sidebar-bg);
       padding: 60px 15px 20px;
       transition: left 0.3s ease;
       z-index: 999;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
     }
 
     .sidebar.open {
@@ -65,85 +110,173 @@
     .sidebar h2 {
       font-size: 20px;
       margin-bottom: 20px;
+      color: var(--accent-color);
+      text-transform: uppercase;
     }
 
-    .sidebar nav a {
-      display: block;
-      color: #ccc;
+    .sidebar nav a,
+    .sidebar .upload-section {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-color);
       padding: 12px;
       text-decoration: none;
       font-size: 16px;
-      border-radius: 5px;
+      border-radius: 8px;
       margin: 10px 0;
-      transition: background 0.2s;
+      transition: all 0.3s ease;
     }
 
     .sidebar nav a:hover,
-    .sidebar nav a:focus {
-      background-color: #333;
+    .sidebar nav a:focus,
+    .sidebar .upload-section:hover,
+    .sidebar .upload-section:focus-within {
+      background: var(--primary-color);
+      transform: translateX(5px);
     }
 
+    .sidebar nav a i,
+    .sidebar .upload-section i {
+      font-size: 18px;
+    }
+
+    .sidebar .upload-section input[type="file"] {
+      display: none;
+    }
+
+    .sidebar .upload-section label {
+      cursor: pointer;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #upload-result {
+      font-size: 12px;
+      color: var(--success-color);
+      margin-top: 10px;
+      padding: 0 12px;
+    }
+
+    /* Main Content */
     .main-content {
       flex: 1;
       padding: 70px 15px 20px;
       display: flex;
       justify-content: center;
-      align-items: flex-start;
+      align-items: center;
       overflow-y: auto;
     }
 
     .card {
-      background-color: #1e1e1e;
-      border-radius: 10px;
+      background: var(--card-bg);
+      border-radius: 12px;
       padding: 20px;
       width: 100%;
       max-width: 400px;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      animation: slideUp 0.5s ease;
+      text-align: center;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
     }
 
     .card h2 {
-      text-align: center;
-      font-size: 24px;
-      margin-bottom: 15px;
+      font-size: 26px;
+      font-weight: 700;
+      margin-bottom: 10px;
+      color: var(--primary-color);
+      text-transform: uppercase;
+    }
+
+    .card p.tagline {
+      font-size: 16px;
+      color: #bbb;
+      margin-bottom: 20px;
+      font-style: italic;
+    }
+
+    .scan-btn {
+      background: var(--primary-color);
+      color: var(--text-color);
+      border: none;
+      border-radius: 50px;
+      padding: 15px;
+      font-size: 18px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 0 10px var(--primary-color);
+      animation: pulse 2s infinite;
+      width: 100%;
+      max-width: 300px;
+      margin: 20px auto;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 10px var(--primary-color), 0 0 20px var(--primary-color); }
+      50% { box-shadow: 0 0 15px var(--primary-color), 0 0 30px var(--primary-color); }
+      100% { box-shadow: 0 0 10px var(--primary-color), 0 0 20px var(--primary-color); }
+    }
+
+    .scan-btn::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.4s, height 0.4s;
+    }
+
+    .scan-btn:active::after {
+      width: 200px;
+      height: 200px;
+    }
+
+    .scan-btn:hover,
+    .scan-btn:focus {
+      background: #0081cb;
+      transform: scale(1.05);
     }
 
     .section {
-      margin-bottom: 20px;
-      text-align: center;
+      margin: 20px 0;
     }
 
-    input[type="file"],
     select,
-    button {
+    button:not(.scan-btn):not(.hamburger):not(.back-to-top) {
       width: 100%;
       padding: 12px;
       border: none;
-      border-radius: 6px;
+      border-radius: 8px;
       font-size: 16px;
       margin-top: 10px;
       touch-action: manipulation;
+      background: #2c2c2c;
+      color: var(--text-color);
     }
 
-    button {
-      background-color: #2979ff;
-      color: white;
-      cursor: pointer;
-      transition: background 0.2s;
-      font-weight: 500;
+    select:focus,
+    button:not(.scan-btn):not(.hamburger):not(.back-to-top):focus {
+      outline: none;
+      box-shadow: 0 0 8px var(--primary-color);
     }
 
-    button:hover,
-    button:focus {
-      background-color: #1565c0;
-    }
-
-    #upload-result {
-      margin-top: 10px;
-      color: #76ff03;
-      font-size: 14px;
-      min-height: 20px;
-    }
-
+    /* Modal */
     .modal {
       display: none;
       position: fixed;
@@ -151,33 +284,91 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background-color: rgba(0, 0, 0, 0.9);
+      background: rgba(0, 0, 0, 0.9);
       z-index: 1000;
       justify-content: center;
       align-items: center;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
     }
 
     .modal-content {
-      background-color: #1a1a1a;
+      background: var(--card-bg);
       padding: 15px;
-      border-radius: 10px;
-      width: 90%;
+      border-radius: 12px;
+      width: 95%;
       max-width: 400px;
       position: relative;
+      animation: slideUp 0.3s ease;
     }
 
     .close {
       position: absolute;
       top: 10px;
       right: 15px;
-      font-size: 24px;
-      color: #fff;
+      font-size: 28px;
+      color: var(--accent-color);
       cursor: pointer;
+      transition: transform 0.2s;
+    }
+
+    .close:active {
+      transform: scale(0.9);
     }
 
     #qr-reader {
       width: 100%;
-      max-height: 60vh;
+      max-height: 55vh;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 2px solid var(--primary-color);
+    }
+
+    .spinner {
+      display: none;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top: 4px solid var(--accent-color);
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+      margin: 10px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Back to Top Button */
+    .back-to-top {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: var(--primary-color);
+      color: var(--text-color);
+      border: none;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      transition: transform 0.2s;
+    }
+
+    .back-to-top.show {
+      display: flex;
+    }
+
+    .back-to-top:active {
+      transform: scale(0.9);
     }
 
     /* Mobile Styles */
@@ -195,12 +386,16 @@
       }
 
       .card h2 {
-        font-size: 20px;
+        font-size: 22px;
       }
 
-      input[type="file"],
+      .scan-btn {
+        font-size: 16px;
+        padding: 12px;
+      }
+
       select,
-      button {
+      button:not(.scan-btn):not(.hamburger):not(.back-to-top) {
         font-size: 14px;
         padding: 10px;
       }
@@ -209,7 +404,8 @@
         font-size: 18px;
       }
 
-      .sidebar nav a {
+      .sidebar nav a,
+      .sidebar .upload-section {
         font-size: 14px;
         padding: 10px;
       }
@@ -217,22 +413,31 @@
 
     @media (max-width: 480px) {
       .card {
-        padding: 10px;
+        padding: 12px;
       }
 
       .card h2 {
-        font-size: 18px;
+        font-size: 20px;
       }
 
-      input[type="file"],
+      .card p.tagline {
+        font-size: 14px;
+      }
+
+      .scan-btn {
+        font-size: 14px;
+        padding: 10px;
+        max-width: 250px;
+      }
+
       select,
-      button {
+      button:not(.scan-btn):not(.hamburger):not(.back-to-top) {
         font-size: 13px;
         padding: 8px;
       }
 
       .modal-content {
-        width: 95%;
+        width: 98%;
         padding: 10px;
       }
 
@@ -244,43 +449,50 @@
   <script src="{% static 'js/html5-qrcode.min.js' %}" defer></script>
 </head>
 <body>
+  <!-- Background Particles -->
+  <div class="particles"></div>
+
   <!-- Header -->
   <header>
-    <h1 style="font-size: 20px;">QR Navigator</h1>
-    <button class="hamburger" aria-label="Toggle menu" onclick="toggleSidebar()">☰</button>
+    <h1>QR Navigator</h1>
+    <button class="hamburger" aria-label="Toggle menu" onclick="toggleSidebar()">
+      <i class="fas fa-bars"></i>
+    </button>
   </header>
 
   <!-- Sidebar -->
   <aside class="sidebar" id="sidebar">
-    <h2>Navigator</h2>
+    <h2>Navigator Hub</h2>
     <nav>
-      <a href="#" onclick="navClick('Home'); toggleSidebar()">🏠 Home</a>
-      <a href="#" onclick="openQRScanner(); toggleSidebar()">📷 Scan QR Code</a>
+      <a href="#" onclick="navClick('Home'); toggleSidebar()">
+        <i class="fas fa-home"></i> Home
+      </a>
+      <div class="upload-section">
+        <label for="qr-upload">
+          <i class="fas fa-upload"></i> Upload QR Code
+        </label>
+        <input type="file" id="qr-upload" accept="image/*" aria-label="Upload QR code image" onchange="scanUploadedQRCode()" />
+      </div>
+      <p id="upload-result" role="status"></p>
     </nav>
-    <small style="position: absolute; bottom: 20px;">© 2025 QRNav</small>
+    <small style="position: absolute; bottom: 20px;">© 2025 QRNav - Scan the Future</small>
   </aside>
 
   <!-- Main Content -->
   <div class="main-content">
     <div class="card">
-      <h2>Welcome to Navigator</h2>
-      <p style="text-align: center; font-size: 14px;">Scan a QR code or upload one to navigate.</p>
-
-      <!-- Upload QR Code -->
-      <div class="section">
-        <h4>📁 Upload QR Code</h4>
-        <input type="file" id="qr-upload" accept="image/*" aria-label="Upload QR code image" />
-        <button onclick="scanUploadedQRCode()">Scan Uploaded QR</button>
-        <p id="upload-result" role="status"></p>
-      </div>
-
-      <!-- Destination Section -->
+      <h2>Scan to Navigate!</h2>
+      <p class="tagline">Your Journey Starts Here</p>
+      <button class="scan-btn" onclick="openQRScanner()">
+        <i class="fas fa-qrcode"></i> Scan QR Code
+        <div class="spinner" id="scan-spinner"></div>
+      </button>
       <div class="section" id="destination-section" style="display: none;">
-        <h4>🧭 Select Destination</h4>
+        <h4><i class="fas fa-map-marker-alt"></i> Choose Your Destination</h4>
         <select id="destination-select" aria-label="Select destination">
           <option value="" disabled selected>Select a destination</option>
         </select>
-        <button onclick="navigateToDestination()">Navigate</button>
+        <button onclick="navigateToDestination()">Navigate Now</button>
       </div>
     </div>
   </div>
@@ -288,11 +500,19 @@
   <!-- QR Scanner Modal -->
   <div id="qrModal" class="modal">
     <div class="modal-content">
-      <span class="close" onclick="closeQRScanner()" aria-label="Close QR scanner">×</span>
-      <h3>Scan QR Code</h3>
+      <span class="close" onclick="closeQRScanner()" aria-label="Close QR scanner">
+        <i class="fas fa-times"></i>
+      </span>
+      <h3>Unlock Your Path</h3>
       <div id="qr-reader"></div>
+      <div class="spinner" id="qr-spinner"></div>
     </div>
   </div>
+
+  <!-- Back to Top Button -->
+  <button class="back-to-top" aria-label="Back to top" onclick="window.scrollTo({top: 0, behavior: 'smooth'})">
+    <i class="fas fa-arrow-up"></i>
+  </button>
 
   <!-- JavaScript -->
   <script>
@@ -318,31 +538,41 @@
     function toggleSidebar() {
       const sidebar = document.getElementById("sidebar");
       sidebar.classList.toggle("open");
+      navigator.vibrate?.(50);
     }
 
     function navClick(name) {
       alert(`Navigated to ${name}`);
+      navigator.vibrate?.(30);
     }
 
     function openQRScanner() {
       const modal = document.getElementById("qrModal");
+      const spinner = document.getElementById("qr-spinner");
       modal.style.display = "flex";
+      spinner.style.display = "block";
       qrScanner = new Html5Qrcode("qr-reader");
 
       qrScanner.start(
         { facingMode: "environment" },
         { fps: 10, qrbox: { width: 250, height: 250 } },
         (decodedText) => {
+          spinner.style.display = "none";
           try {
             qrData = JSON.parse(decodedText);
             document.getElementById("destination-section").style.display = "block";
             closeQRScanner();
+            navigator.vibrate?.(100);
           } catch {
             alert("Invalid QR format.");
+            spinner.style.display = "none";
           }
         },
         (err) => console.log("QR Error:", err)
-      ).catch(err => console.error("QR Scanner start error:", err));
+      ).catch(err => {
+        console.error("QR Scanner start error:", err);
+        spinner.style.display = "none";
+      });
     }
 
     function closeQRScanner() {
@@ -350,6 +580,7 @@
         qrScanner.stop().then(() => qrScanner.clear()).catch(err => console.error("QR Scanner stop error:", err));
       }
       document.getElementById("qrModal").style.display = "none";
+      document.getElementById("qr-spinner").style.display = "none";
     }
 
     function scanUploadedQRCode() {
@@ -361,6 +592,7 @@
         return;
       }
 
+      resultElement.textContent = "Scanning...";
       const file = fileInput.files[0];
       const html5QrCode = new Html5Qrcode("qr-reader");
 
@@ -370,6 +602,8 @@
           try {
             qrData = JSON.parse(decodedText);
             document.getElementById("destination-section").style.display = "block";
+            toggleSidebar();
+            navigator.vibrate?.(100);
           } catch {
             resultElement.textContent = "Invalid QR code format.";
           }
@@ -390,14 +624,41 @@
       const destination = JSON.parse(selected);
       const url = `/navigation/university_blocks_roads/?start_lat=${qrData.lat}&start_lng=${qrData.lng}&end_lat=${destination.latitude}&end_lng=${destination.longitude}`;
       window.location.href = url;
+      navigator.vibrate?.(50);
     }
 
-    // Close sidebar when clicking outside on mobile
+    // Close sidebar when clicking outside
     document.addEventListener("click", (e) => {
       const sidebar = document.getElementById("sidebar");
       const hamburger = document.querySelector(".hamburger");
       if (sidebar.classList.contains("open") && !sidebar.contains(e.target) && !hamburger.contains(e.target)) {
         sidebar.classList.remove("open");
+      }
+    });
+
+    // Swipe to open/close sidebar
+    let touchStartX = 0;
+    document.addEventListener("touchstart", (e) => {
+      touchStartX = e.touches[0].clientX;
+    });
+    document.addEventListener("touchend", (e) => {
+      const touchEndX = e.changedTouches[0].clientX;
+      const sidebar = document.getElementById("sidebar");
+      if (touchEndX - touchStartX > 50 && touchStartX < 50) {
+        sidebar.classList.add("open");
+        navigator.vibrate?.(50);
+      } else if (touchStartX - touchEndX > 50 && sidebar.classList.contains("open")) {
+        sidebar.classList.remove("open");
+      }
+    });
+
+    // Show/hide back-to-top button
+    window.addEventListener("scroll", () => {
+      const backToTop = document.querySelector(".back-to-top");
+      if (window.scrollY > 200) {
+        backToTop.classList.add("show");
+      } else {
+        backToTop.classList.remove("show");
       }
     });
   </script>
