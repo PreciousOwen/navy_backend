@@ -107,7 +107,7 @@ else:
             'NAME': os.getenv('DATABASE_NAME', 'osm_data'),
             'USER': os.getenv('DATABASE_USER', 'postgres'),
             'PASSWORD': os.getenv('DATABASE_PASSWORD', 'OWEN'),
-            'HOST': os.getenv('DATABASE_HOST', 'localhost'),
+            'HOST': os.getenv('DATABASE_HOST', '172.31.24.82'),
             'PORT': os.getenv('DATABASE_PORT', '5432'),
             'OPTIONS': {
                 'charset': 'utf8mb4',
