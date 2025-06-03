@@ -5,7 +5,7 @@ set -e
 echo "Starting Django Ledger application..."
 
 # Wait for database to be ready (if using PostgreSQL or MySQL)
-if [ "$DATABASE_ENGINE" = "django.db.backends.postgresql" ]; then
+if [ "$DATABASE_ENGINE" = "django.db.backends.postgresql" ] || [ "$DATABASE_ENGINE" = "django.contrib.gis.db.backends.postgis" ]; then
     echo "Waiting for PostgreSQL..."
     until nc -z $DATABASE_HOST $DATABASE_PORT; do
         echo "PostgreSQL is unavailable - sleeping"

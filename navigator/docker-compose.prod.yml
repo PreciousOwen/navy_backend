@@ -10,21 +10,7 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
       - redis
-    networks:
-      - django_ledger_network
-    restart: unless-stopped
-
-  # PostgreSQL Database
-  db:
-    image: postgis/postgis:15-3.4
-    environment:
-      POSTGRES_DB: ${DATABASE_NAME}
-      POSTGRES_USER: ${DATABASE_USER}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
     networks:
       - django_ledger_network
     restart: unless-stopped
@@ -59,7 +45,6 @@ volumes:
   static_volume:
   media_volume:
   redis_data:
-  postgres_data:
 
 networks:
   django_ledger_network:
