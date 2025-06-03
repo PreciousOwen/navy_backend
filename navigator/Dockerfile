@@ -20,7 +20,8 @@ RUN apt-get update \
         curl \
         netcat-traditional \
         postgresql-client \
-        && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip
 RUN pip install --upgrade pip
