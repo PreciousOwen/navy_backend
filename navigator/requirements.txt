@@ -27,7 +27,6 @@ MarkupSafe==3.0.2
 matplotlib==3.10.1
 networkx==3.4.2
 numpy==2.2.3
-ogr2osm==1.2.0
 osmnx==2.0.2
 packaging==24.2
 pandas==2.2.3
