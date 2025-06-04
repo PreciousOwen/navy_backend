@@ -48,15 +48,15 @@
         }
         /* Path glow with new color */
         .leaflet-interactive.shortest-path-glow {
-            stroke: #FF6F00;
+            stroke: #FFD180; /* lighter orange */
             stroke-width: 10;
-            filter: drop-shadow(0 0 12px #FF6F00cc);
+            filter: drop-shadow(0 0 12px #FFD180cc);
             opacity: 0.85;
             animation: pathGlow 2s infinite alternate;
         }
         @keyframes pathGlow {
-            0% { filter: drop-shadow(0 0 12px #FF6F00cc); opacity: 0.85; }
-            100% { filter: drop-shadow(0 0 24px #FF3D00ff); opacity: 1; }
+            0% { filter: drop-shadow(0 0 12px #FFD180cc); opacity: 0.85; }
+            100% { filter: drop-shadow(0 0 24px #FFE082ff); opacity: 1; }
         }
     </style>
 </head>
@@ -153,11 +153,43 @@
             });
         }
 
+        function getScreenReferencePoints() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            return {
+                width,
+                height,
+                startScreen: [width / 2, height * 0.8], // 20% from bottom
+                endScreen: [width / 2, height * 0.2]    // 20% from top
+            };
+        }
+
+        function getLatLngFromScreen(latlngBounds, screenPoint, map) {
+            // Convert a screen point (x, y) to a latlng using the map's containerPointToLatLng
+            return map.containerPointToLatLng(screenPoint);
+        }
+
+        function calculateRotationAngle(start, end) {
+            // Calculate the angle needed to rotate the map so that the path points north
+            // Returns the bearing from start to end, but reversed so start is at the bottom
+            const toRad = (deg) => deg * Math.PI / 180;
+            const toDeg = (rad) => rad * 180 / Math.PI;
+            const lat1 = toRad(start[1]), lon1 = toRad(start[0]);
+            const lat2 = toRad(end[1]), lon2 = toRad(end[0]);
+            const dLon = lon2 - lon1;
+            const y = Math.sin(dLon) * Math.cos(lat2);
+            const x = Math.cos(lat1) * Math.sin(lat2) -
+                      Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+            let brng = toDeg(Math.atan2(y, x));
+            brng = (brng + 360) % 360;
+            return brng;
+        }
+
         function renderShortestPath(path) {
             if (path) {
                 const pathLayer = L.geoJSON(path, {
                     style: {
-                        color: "#FF6F00", // vibrant orange for the path
+                        color: "#FFD180", // light orange
                         weight: 10,
                         opacity: 0.95,
                         className: "shortest-path-glow"
@@ -183,41 +215,52 @@
                 const startPoint = path.coordinates[0];
                 const endPoint = path.coordinates[path.coordinates.length - 1];
 
-                L.marker([startPoint[1], startPoint[0]], { icon: startIcon })
-                    .addTo(map)
-                    .bindPopup("<b>Starting Point</b>")
-                    .openPopup();
-
-                L.marker([endPoint[1], endPoint[0]], { icon: finishIcon })
-                    .addTo(map)
-                    .bindPopup("<b>Finishing Point</b>");
-
-                // Fit bounds: maximize path in view, start at bottom
+                // Fit bounds to path first
                 const bounds = pathLayer.getBounds();
-                const paddingX = Math.max(window.innerWidth * 0.08, 10);
-                const paddingTop = Math.max(window.innerHeight * 0.03, 5);
-                const paddingBottom = Math.max(window.innerHeight * 0.35, 80);
-
                 map.fitBounds(bounds, {
-                    paddingTopLeft: [paddingX, paddingTop],
-                    paddingBottomRight: [paddingX, paddingBottom],
+                    padding: [40, 40],
                     maxZoom: 18,
                     minZoom: 16
                 });
 
-                setTimeout(() => {
-                    map.panBy([0, -window.innerHeight * 0.18], { animate: true });
-                }, 400);
+                // Calculate rotation so that the path is oriented south->north on the screen
+                const rotation = calculateRotationAngle(startPoint, endPoint);
+                map.setBearing(rotation);
 
-                // Set bearing for journey effect
-                if (path.coordinates.length > 1) {
-                    const nextPoint = path.coordinates[1];
-                    const bearing = calculateBearing(
-                        startPoint[1], startPoint[0],
-                        nextPoint[1], nextPoint[0]
-                    );
-                    map.setBearing(bearing);
-                }
+                // After rotation, calculate the screen points for start and end
+                setTimeout(() => {
+                    // Get the reference points on the screen
+                    const { width, height, startScreen, endScreen } = getScreenReferencePoints();
+
+                    // Get the current pixel positions of the start and end points
+                    const startLatLng = L.latLng(startPoint[1], startPoint[0]);
+                    const endLatLng = L.latLng(endPoint[1], endPoint[0]);
+                    const startPixel = map.latLngToContainerPoint(startLatLng);
+                    const endPixel = map.latLngToContainerPoint(endLatLng);
+
+                    // Calculate the offset needed to move start to startScreen and end to endScreen
+                    // We'll use the start point as the anchor
+                    const offsetX = startScreen[0] - startPixel.x;
+                    const offsetY = startScreen[1] - startPixel.y;
+
+                    // Pan the map so that the start point is at the desired screen position
+                    map.panBy([offsetX, offsetY], { animate: true });
+
+                    // Optionally, check if the end point is close to the desired endScreen position
+                    // If not, adjust zoom or bearing further (advanced, not required for most cases)
+                }, 500);
+
+                // Place markers after pan/rotation
+                setTimeout(() => {
+                    L.marker([startPoint[1], startPoint[0]], { icon: startIcon })
+                        .addTo(map)
+                        .bindPopup("<b>Starting Point</b>")
+                        .openPopup();
+
+                    L.marker([endPoint[1], endPoint[0]], { icon: finishIcon })
+                        .addTo(map)
+                        .bindPopup("<b>Finishing Point</b>");
+                }, 800);
             }
         }
 
