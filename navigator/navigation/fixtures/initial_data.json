@@ -10,7 +10,7 @@
     },
     {
         "model": "navigation.location",
-        "pk": 1,
+        "pk": 2,
         "fields": {
             "name": "Main Gate-Regency Location",
             "latitude": -6.814087,
@@ -19,7 +19,7 @@
     },
     {
         "model": "navigation.location",
-        "pk": 1,
+        "pk": 3,
         "fields": {
             "name": "Main Gate-UDART Location",
             "latitude": -6.815408,
@@ -28,11 +28,79 @@
     },
     {
         "model": "navigation.location",
-        "pk": 1,
+        "pk": 4,
         "fields": {
             "name": "A-Block",
             "latitude": -6.814907,
             "longitude": 39.279397
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 5,
+        "fields": {
+            "name": "Library",
+            "latitude": -6.8135,
+            "longitude": 39.2789
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 6,
+        "fields": {
+            "name": "Cafeteria",
+            "latitude": -6.816,
+            "longitude": 39.2802
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 7,
+        "fields": {
+            "name": "Start Point W15 point",
+            "latitude": -6.814604,
+            "longitude": 39.280083,
+            "floor": 1
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 8,
+        "fields": {
+            "name": "Start Point W7f point",
+            "latitude": -6.814865,
+            "longitude": 39.279927,
+            "floor": 1
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 9,
+        "fields": {
+            "name": "Start Point W8 point",
+            "latitude": -6.815052,
+            "longitude": 39.280607,
+            "floor": 1
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 10,
+        "fields": {
+            "name": "Start Point Canteeen point",
+            "latitude": -6.815146,
+            "longitude": 39.280713,
+            "floor": 1
+        }
+    },
+    {
+        "model": "navigation.location",
+        "pk": 11,
+        "fields": {
+            "name": "Start Point ttground  point",
+            "latitude": -6.814721,
+            "longitude": 39.279463,
+            "floor": 1
         }
     }
 ]
