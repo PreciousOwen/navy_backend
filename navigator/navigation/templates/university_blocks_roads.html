@@ -46,6 +46,17 @@
             vertical-align: middle;
             margin-right: 8px;
         }
+        .leaflet-interactive.shortest-path-glow {
+            stroke: #4285F4;
+            stroke-width: 9;
+            filter: drop-shadow(0 0 8px #4285F4aa);
+            opacity: 0.7;
+            animation: pathGlow 2s infinite alternate;
+        }
+        @keyframes pathGlow {
+            0% { filter: drop-shadow(0 0 8px #4285F4aa); opacity: 0.7; }
+            100% { filter: drop-shadow(0 0 18px #4285F4ff); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -76,7 +87,6 @@
         }
 
         let map;
-        let userMarker;
 
         const initialPosition = shortestPath && shortestPath.coordinates.length > 0
             ? shortestPath.coordinates[0]
@@ -148,22 +158,24 @@
                     style: {
                         color: "#4285F4",
                         weight: 7,
-                        opacity: 0.95
+                        opacity: 0.95,
+                        className: "shortest-path-glow"
                     }
                 }).addTo(map).bindPopup("<b>Shortest Path</b>");
 
+                // Attractive custom icons
                 const startIcon = L.icon({
-                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34]
+                    iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+                    iconSize: [38, 48],
+                    iconAnchor: [19, 48],
+                    popupAnchor: [0, -40]
                 });
 
                 const finishIcon = L.icon({
-                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41],
-                    popupAnchor: [1, -34]
+                    iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684911.png',
+                    iconSize: [38, 48],
+                    iconAnchor: [19, 48],
+                    popupAnchor: [0, -40]
                 });
 
                 const startPoint = path.coordinates[0];
@@ -180,9 +192,9 @@
 
                 // Zoom to fit the entire route with more padding at the bottom
                 const bounds = pathLayer.getBounds();
-                const paddingX = Math.max(window.innerWidth * 0.10, 20); // 10% of width or at least 20px
-                const paddingTop = Math.max(window.innerHeight * 0.05, 10); // 5% of height or at least 10px
-                const paddingBottom = Math.max(window.innerHeight * 0.30, 60); // 30% of height or at least 60px
+                const paddingX = Math.max(window.innerWidth * 0.10, 20);
+                const paddingTop = Math.max(window.innerHeight * 0.05, 10);
+                const paddingBottom = Math.max(window.innerHeight * 0.30, 60);
 
                 map.fitBounds(bounds, {
                     paddingTopLeft: [paddingX, paddingTop],
@@ -191,12 +203,11 @@
                     minZoom: 16
                 });
 
-                // Optionally, pan the map slightly down to ensure the start point is at the bottom
                 setTimeout(() => {
                     map.panBy([0, -window.innerHeight * 0.15], { animate: true });
                 }, 400);
 
-                // Calculate initial heading from start to the next point
+                // Calculate initial bearing from start to the next point
                 if (path.coordinates.length > 1) {
                     const nextPoint = path.coordinates[1];
                     const bearing = calculateBearing(
@@ -239,47 +250,11 @@
             legend.addTo(map);
         }
 
-        function simulateUserPosition() {
-            const startPoint = shortestPath.coordinates[0];
-            userMarker = L.marker([startPoint[1], startPoint[0]], {
-                rotationAngle: 0,
-                icon: L.icon({
-                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41]
-                })
-            }).addTo(map);
-
-            let currentIndex = 0;
-            const interval = setInterval(() => {
-                if (currentIndex < shortestPath.coordinates.length - 1) {
-                    currentIndex++;
-                    const currentPoint = shortestPath.coordinates[currentIndex];
-                    const nextPoint = shortestPath.coordinates[currentIndex + 1] || currentPoint;
-
-                    userMarker.setLatLng([currentPoint[1], currentPoint[0]]);
-
-                    const bearing = calculateBearing(
-                        currentPoint[1], currentPoint[0],
-                        nextPoint[1], nextPoint[0]
-                    );
-                    map.setBearing(bearing);
-                    userMarker.setRotationAngle(bearing);
-
-                    // Optionally re-center the map on the user as they move
-                    map.panTo([currentPoint[1], currentPoint[0]], { animate: true });
-                } else {
-                    clearInterval(interval);
-                }
-            }, 2000);
-        }
-
         map.on('load', function () {
             if (roads.length > 0) renderRoads(roads);
             if (buildings.length > 0) renderBuildings(buildings);
             if (shortestPath) {
                 renderShortestPath(shortestPath);
-                simulateUserPosition();
             }
             addLegend();
         });
