@@ -2,12 +2,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>University Roads and Buildings</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
-    <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
 
     <style>
         body {
@@ -23,7 +23,7 @@
             color: #444;
         }
         #map {
-            height: 600px; /* Adjusted height for better view */
+            height: 600px;
             width: 100%;
         }
         form {
@@ -35,6 +35,43 @@
             margin-top: 10px;
             font-size: 16px;
             cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            transition: background-color 0.2s ease;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        /* Custom legend styling for MapLibre GL JS */
+        .maplibregl-ctrl-bottom-right {
+            position: absolute;
+            right: 10px;
+            bottom: 10px;
+        }
+        .legend {
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+            font-size: 14px;
+            line-height: 18px;
+            color: #555;
+            z-index: 100; /* Ensure it's above the map */
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.7;
+        }
+        .legend img {
+            width: 18px;
+            height: 18px;
+            vertical-align: middle;
+            margin-right: 8px;
         }
     </style>
 </head>
@@ -50,189 +87,277 @@
     <div id="map"></div>
 
     <script>
-        console.log("JavaScript is running!");
-
-        // Parse road and building data
+        let map;
         let roads = [];
         let buildings = [];
+        let shortestPath = null;
+        let userMarker = null; // MapLibre GL JS Marker object
+
         try {
             roads = JSON.parse('{{ road_data_json|escapejs }}');
             buildings = JSON.parse('{{ building_data_json|escapejs }}');
-            console.log("Road Data:", roads);
-            console.log("Building Data:", buildings);
+            shortestPath = {{ shortest_path_json|default:"null"|safe }};
         } catch (error) {
-            console.error("Error parsing data:", error);
+            console.error("Error parsing map data:", error);
         }
 
-        let shortestPath = {{ shortest_path_json|default:"null"|safe }};
+        const defaultCoords = [39.281655, -6.814328]; // [longitude, latitude] for MapLibre GL JS
+        const initialPoint = shortestPath?.coordinates?.[0] || defaultCoords;
 
-        // Initialize MapLibre GL JS with OSM raster tiles
-        const map = new maplibregl.Map({
-            container: 'map',
-            style: {
-                version: 8,
-                sources: {
-                    'osm-tiles': {
-                        type: 'raster',
-                        tiles: [
-                            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-                        ],
-                        tileSize: 256,
-                        attribution: '© OpenStreetMap contributors'
-                    }
-                },
-                layers: [
-                    {
-                        id: 'osm-tiles',
-                        type: 'raster',
-                        source: 'osm-tiles'
-                    }
-                ]
-            },
-            center: [39.281655, -6.814328],
-            zoom: 15,
-            pitch: 50, // This gives the "incline" effect
-            bearing: 30, // This gives the rotation
-            maxZoom: 18 // Set your desired maximum zoom level here (e.g., 18-20 is common for detailed city views)
+        // Initialize MapLibre GL JS map
+        map = new maplibregl.Map({
+            container: 'map', // container ID
+            // Using a CartoDB Positron style, which is a good base map
+            style: 'https://tiles.stadiamaps.com/styles/alidade_smooth.json',
+            center: initialPoint, // starting position [lng, lat]
+            zoom: 17, // starting zoom
+            pitch: 45, // Map inclination (tilt) in degrees. Adjust as needed.
+            bearing: 0, // Map rotation (bearing) in degrees.
+            antialias: true // Smoother rendering
         });
 
-        map.addControl(new maplibregl.NavigationControl());
+        // Add navigation controls (zoom and compass)
+        map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-        // Function to add roads to the map
-        function renderRoads(roads) {
-            roads.forEach(function(road, index) {
-                try {
-                    console.log(`Processing road ${index + 1}:`, road);
-                    let geojson = road.geometry;
+        // Event listener for when the map style is loaded
+        map.on('load', () => {
+            renderRoads();
+            renderBuildings();
+            if (shortestPath) {
+                renderShortestPath();
+                simulateUserPosition(); // Note: This will be a simplified simulation without marker rotation
+            }
+            addLegend();
+        });
 
-                    if (typeof geojson === "string") {
-                        geojson = JSON.parse(geojson);
-                    }
-
-                    map.addSource(`road-${index}`, {
-                        type: 'geojson',
-                        data: geojson
-                    });
-
-                    map.addLayer({
-                        id: `road-layer-${index}`,
-                        type: 'line',
-                        source: `road-${index}`,
-                        paint: {
-                            'line-color': '#dddddd', /* Matching the grey color from Leaflet example */
-                            'line-width': 5,          /* Matching the width from Leaflet example */
-                            'line-opacity': 0.9      /* Matching the opacity from Leaflet example */
-                        }
-                    });
-                } catch (error) {
-                    console.error(`Error rendering road ${index + 1}:`, error);
+        function renderRoads() {
+            // Add a source for roads
+            map.addSource('roads-data', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'FeatureCollection',
+                    'features': roads.map(road => ({
+                        'type': 'Feature',
+                        'geometry': typeof road.geometry === "string" ? JSON.parse(road.geometry) : road.geometry,
+                        'properties': { 'name': road.name || "Unnamed Road" }
+                    }))
                 }
+            });
+
+            // Add a layer for roads
+            map.addLayer({
+                'id': 'roads-layer',
+                'type': 'line',
+                'source': 'roads-data',
+                'paint': {
+                    'line-color': '#dddddd',
+                    'line-width': 5,
+                    'line-opacity': 0.9
+                }
+            });
+
+            // Add popups for roads
+            map.on('click', 'roads-layer', (e) => {
+                const coordinates = e.lngLat;
+                const description = `<b>Road:</b> ${e.features[0].properties.name}`;
+                new maplibregl.Popup()
+                    .setLngLat(coordinates)
+                    .setHTML(description)
+                    .addTo(map);
             });
         }
 
-        // Function to add buildings to the map
-        function renderBuildings(buildings) {
-            buildings.forEach(function(building, index) {
-                try {
-                    console.log(`Processing building ${index + 1}:`, building);
-                    let geojson = building.geometry;
-
-                    if (typeof geojson === "string") {
-                        geojson = JSON.parse(geojson);
-                    }
-
-                    map.addSource(`building-${index}`, {
-                        type: 'geojson',
-                        data: geojson
-                    });
-
-                    map.addLayer({
-                        id: `building-layer-${index}`,
-                        type: 'fill',
-                        source: `building-${index}`,
-                        paint: {
-                            'fill-color': '#f5f5f5', /* Matching the fill color from Leaflet example */
-                            'fill-outline-color': '#b0b0b0', /* Matching the border color from Leaflet example */
-                            'fill-opacity': 0.7       /* Matching the opacity from Leaflet example */
-                        }
-                    });
-                } catch (error) {
-                    console.error(`Error rendering building ${index + 1}:`, error);
+        function renderBuildings() {
+            // Add a source for buildings
+            map.addSource('buildings-data', {
+                'type': 'geojson',
+                'data': {
+                    'type': 'FeatureCollection',
+                    'features': buildings.map(building => ({
+                        'type': 'Feature',
+                        'geometry': typeof building.geometry === "string" ? JSON.parse(building.geometry) : building.geometry,
+                        'properties': { 'name': building.name || "Unnamed Building" }
+                    }))
                 }
+            });
+
+            // Add a layer for buildings
+            map.addLayer({
+                'id': 'buildings-layer',
+                'type': 'fill',
+                'source': 'buildings-data',
+                'paint': {
+                    'fill-color': '#f5f5f5',
+                    'fill-opacity': 0.7,
+                    'fill-outline-color': '#b0b0b0'
+                }
+            });
+
+            // Add popups for buildings
+            map.on('click', 'buildings-layer', (e) => {
+                const coordinates = e.lngLat;
+                const description = `<b>Building:</b> ${e.features[0].properties.name}`;
+                new maplibregl.Popup()
+                    .setLngLat(coordinates)
+                    .setHTML(description)
+                    .addTo(map);
             });
         }
 
-        // Function to render the shortest path
         function renderShortestPath() {
             if (!shortestPath) return;
 
-            map.addSource('shortest-path', {
-                type: 'geojson',
-                data: shortestPath
+            // Add source for shortest path
+            map.addSource('shortest-path-data', {
+                'type': 'geojson',
+                'data': shortestPath
             });
 
+            // Add layer for shortest path
             map.addLayer({
-                id: 'shortest-path-layer',
-                type: 'line',
-                source: 'shortest-path',
-                paint: {
-                    'line-color': '#4285F4', /* Matching the blue color from Leaflet example */
-                    'line-width': 7,          /* Matching the width from Leaflet example */
-                    'line-opacity': 0.95     /* Matching the opacity from Leaflet example */
+                'id': 'shortest-path-layer',
+                'type': 'line',
+                'source': 'shortest-path-data',
+                'paint': {
+                    'line-color': '#4285F4',
+                    'line-width': 7,
+                    'line-opacity': 0.95
                 }
             });
 
-            // Add start and end markers
+            // Add popups for shortest path
+            map.on('click', 'shortest-path-layer', (e) => {
+                const coordinates = e.lngLat;
+                new maplibregl.Popup()
+                    .setLngLat(coordinates)
+                    .setHTML("<b>Shortest Path</b>")
+                    .addTo(map);
+            });
+
             const startPoint = shortestPath.coordinates[0];
             const endPoint = shortestPath.coordinates.at(-1);
 
-            // You'll need to define custom icons or use default MapLibre GL JS markers for these
-            // For simplicity, let's just add regular markers here. For custom images, you'd load them first.
-            new maplibregl.Marker({ color: 'green' }) // Start marker
-                .setLngLat([startPoint[0], startPoint[1]])
-                .setPopup(new maplibregl.Popup().setText('Starting Point'))
+            // Create custom HTML elements for markers
+            const startEl = document.createElement('div');
+            startEl.className = 'marker start-marker'; // Add a class for potential custom styling
+            startEl.style.backgroundImage = `url('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png')`;
+            startEl.style.width = '25px';
+            startEl.style.height = '41px';
+            startEl.style.backgroundSize = 'contain';
+
+            const endEl = document.createElement('div');
+            endEl.className = 'marker end-marker'; // Add a class for potential custom styling
+            endEl.style.backgroundImage = `url('https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png')`;
+            endEl.style.width = '25px';
+            endEl.style.height = '41px';
+            endEl.style.backgroundSize = 'contain';
+
+            // Add Start Marker
+            new maplibregl.Marker({ element: startEl, anchor: 'bottom' })
+                .setLngLat(startPoint)
+                .setPopup(new maplibregl.Popup().setHTML("Starting Point"))
                 .addTo(map);
 
-            new maplibregl.Marker({ color: 'red' }) // End marker
-                .setLngLat([endPoint[0], endPoint[1]])
-                .setPopup(new maplibregl.Popup().setText('Finishing Point'))
+            // Add End Marker
+            new maplibregl.Marker({ element: endEl, anchor: 'bottom' })
+                .setLngLat(endPoint)
+                .setPopup(new maplibregl.Popup().setHTML("Finishing Point"))
                 .addTo(map);
 
-            // Fit map to path bounds
-            const bounds = new maplibregl.LngLatBounds();
+            // Fit map to path bounds with pitch and bearing
+            const bounds = new maplibregl.LngLatBounds(startPoint, endPoint);
             shortestPath.coordinates.forEach(coord => {
                 bounds.extend(coord);
             });
-            map.fitBounds(bounds, { padding: 50, maxZoom: 18 });
+
+            map.fitBounds(bounds, {
+                padding: { top: 50, bottom: 50, left: 50, right: 50 },
+                maxZoom: 18,
+                pitch: 45, // Set pitch when fitting to bounds
+                bearing: 0 // Optional: Set a bearing when fitting to bounds
+            });
+
+            // Set initial map bearing to align with the path
+            if (shortestPath.coordinates.length > 1) {
+                const [startLng, startLat] = startPoint;
+                const [nextLng, nextLat] = shortestPath.coordinates[1];
+                const bearing = calculateBearing(startLat, startLng, nextLat, nextLng);
+                map.setBearing(bearing);
+            }
         }
 
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const toRad = deg => deg * Math.PI / 180;
+            const toDeg = rad => rad * 180 / Math.PI;
 
-        // Wait for the style to finish loading
-        map.on('load', function () {
-            console.log("Map style is loaded. Rendering roads and buildings...");
+            const φ1 = toRad(lat1), φ2 = toRad(lat2);
+            const Δλ = toRad(lon2 - lon1);
+            const y = Math.sin(Δλ) * Math.cos(φ2);
+            const x = Math.cos(φ1) * Math.sin(φ2) -
+                      Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+            return (toDeg(Math.atan2(y, x)) + 360) % 360;
+        }
 
-            if (roads.length > 0) {
-                renderRoads(roads);
-            } else {
-                console.warn("No roads available to render.");
-            }
+        // Simplified simulateUserPosition for MapLibre GL JS
+        function simulateUserPosition() {
+            if (!shortestPath || shortestPath.coordinates.length < 2) return;
 
-            if (buildings.length > 0) {
-                renderBuildings(buildings);
-            } else {
-                console.warn("No buildings available to render.");
-            }
+            const coords = shortestPath.coordinates;
+            let index = 0;
 
-            renderShortestPath(); // Call this after roads and buildings
+            // Create a custom HTML element for the user marker
+            const userEl = document.createElement('div');
+            userEl.className = 'user-marker'; // Add a class for potential custom styling
+            userEl.style.backgroundImage = `url('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png')`;
+            userEl.style.width = '25px';
+            userEl.style.height = '41px';
+            userEl.style.backgroundSize = 'contain';
 
-            // MapLibre GL JS doesn't have a direct equivalent for Leaflet's `simulateUserPosition`
-            // and dynamic bearing setting on a marker.
-            // Implementing a precise simulation with bearing and smooth movement would require
-            // more advanced animation techniques within MapLibre GL JS.
-            // For this response, I'll focus on the initial setup and path rendering.
-        });
+            userMarker = new maplibregl.Marker({ element: userEl, anchor: 'bottom' })
+                .setLngLat(coords[0])
+                .addTo(map);
+
+            const interval = setInterval(() => {
+                if (index < coords.length - 1) {
+                    index++;
+                    const [lon, lat] = coords[index];
+                    const [nextLon, nextLat] = coords[index + 1] || [lon, lat];
+
+                    userMarker.setLngLat([lon, lat]);
+
+                    // Calculate bearing for map rotation
+                    const bearing = calculateBearing(lat, lon, nextLat, nextLon);
+
+                    // Move map and rotate
+                    map.flyTo({
+                        center: [lon, lat],
+                        bearing: bearing,
+                        speed: 0.8, // Adjust speed as needed
+                        curve: 1, // How much the route curve is between old and new center, 0-1
+                        easing: (t) => t // Linear easing
+                    });
+                } else {
+                    clearInterval(interval);
+                    // Optionally remove the user marker or show "arrived" message
+                }
+            }, 2000); // Adjust interval for simulation speed
+        }
+
+        // Custom Legend implementation for MapLibre GL JS (HTML/CSS based)
+        function addLegend() {
+            const legendContainer = document.createElement('div');
+            legendContainer.className = 'legend';
+            legendContainer.innerHTML = `
+                <i style="background: #dddddd;"></i> Roads<br>
+                <i style="background: #f5f5f5; border: 1px solid #b0b0b0;"></i> Buildings<br>
+                <i style="background: #4285F4;"></i> Shortest Path<br>
+                <img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" /> Starting Point<br>
+                <img src="https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" /> Finishing Point
+            `;
+            // Add the legend to the map container, you can also use map.addControl
+            document.getElementById('map').appendChild(legendContainer);
+        }
+
     </script>
 </body>
 </html>
