@@ -178,13 +178,23 @@
                     .addTo(map)
                     .bindPopup("<b>Finishing Point</b>");
 
-                // Zoom to fit the entire route
+                // Zoom to fit the entire route with more padding at the bottom
                 const bounds = pathLayer.getBounds();
+                const paddingX = Math.max(window.innerWidth * 0.10, 20); // 10% of width or at least 20px
+                const paddingTop = Math.max(window.innerHeight * 0.05, 10); // 5% of height or at least 10px
+                const paddingBottom = Math.max(window.innerHeight * 0.30, 60); // 30% of height or at least 60px
+
                 map.fitBounds(bounds, {
-                    padding: [50, 50], // Add padding for better visibility
-                    maxZoom: 18, // Don't zoom in too close
-                    minZoom: 16 // Ensure enough detail for navigation
+                    paddingTopLeft: [paddingX, paddingTop],
+                    paddingBottomRight: [paddingX, paddingBottom],
+                    maxZoom: 18,
+                    minZoom: 16
                 });
+
+                // Optionally, pan the map slightly down to ensure the start point is at the bottom
+                setTimeout(() => {
+                    map.panBy([0, -window.innerHeight * 0.15], { animate: true });
+                }, 400);
 
                 // Calculate initial heading from start to the next point
                 if (path.coordinates.length > 1) {
