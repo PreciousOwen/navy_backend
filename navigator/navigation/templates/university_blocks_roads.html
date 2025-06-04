@@ -46,16 +46,17 @@
             vertical-align: middle;
             margin-right: 8px;
         }
+        /* Path glow with new color */
         .leaflet-interactive.shortest-path-glow {
-            stroke: #4285F4;
-            stroke-width: 9;
-            filter: drop-shadow(0 0 8px #4285F4aa);
-            opacity: 0.7;
+            stroke: #FF6F00;
+            stroke-width: 10;
+            filter: drop-shadow(0 0 12px #FF6F00cc);
+            opacity: 0.85;
             animation: pathGlow 2s infinite alternate;
         }
         @keyframes pathGlow {
-            0% { filter: drop-shadow(0 0 8px #4285F4aa); opacity: 0.7; }
-            100% { filter: drop-shadow(0 0 18px #4285F4ff); opacity: 1; }
+            0% { filter: drop-shadow(0 0 12px #FF6F00cc); opacity: 0.85; }
+            100% { filter: drop-shadow(0 0 24px #FF3D00ff); opacity: 1; }
         }
     </style>
 </head>
@@ -120,9 +121,9 @@
                     }
                     L.geoJSON(geojson, {
                         style: {
-                            color: "#dddddd",
-                            weight: 5,
-                            opacity: 0.9
+                            color: "#bdbdbd", // subtle gray for roads
+                            weight: 6,
+                            opacity: 0.8
                         }
                     }).addTo(map).bindPopup(`<b>Road:</b> ${road.name || "Unnamed Road"}`);
                 } catch (error) {
@@ -140,10 +141,10 @@
                     }
                     L.geoJSON(geojson, {
                         style: {
-                            color: "#b0b0b0",
+                            color: "#8d99ae", // soft blue-gray for building outlines
                             weight: 1,
-                            fillColor: "#f5f5f5",
-                            fillOpacity: 0.7
+                            fillColor: "#edf2f4", // light fill
+                            fillOpacity: 0.8
                         }
                     }).addTo(map).bindPopup(`<b>Building:</b> ${building.name || "Unnamed Building"}`);
                 } catch (error) {
@@ -156,8 +157,8 @@
             if (path) {
                 const pathLayer = L.geoJSON(path, {
                     style: {
-                        color: "#4285F4",
-                        weight: 7,
+                        color: "#FF6F00", // vibrant orange for the path
+                        weight: 10,
                         opacity: 0.95,
                         className: "shortest-path-glow"
                     }
@@ -171,8 +172,9 @@
                     popupAnchor: [0, -40]
                 });
 
+                // Green flag for finish
                 const finishIcon = L.icon({
-                    iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684911.png',
+                    iconUrl: 'https://cdn-icons-png.flaticon.com/512/190/190411.png',
                     iconSize: [38, 48],
                     iconAnchor: [19, 48],
                     popupAnchor: [0, -40]
@@ -190,11 +192,11 @@
                     .addTo(map)
                     .bindPopup("<b>Finishing Point</b>");
 
-                // Zoom to fit the entire route with more padding at the bottom
+                // Fit bounds: maximize path in view, start at bottom
                 const bounds = pathLayer.getBounds();
-                const paddingX = Math.max(window.innerWidth * 0.10, 20);
-                const paddingTop = Math.max(window.innerHeight * 0.05, 10);
-                const paddingBottom = Math.max(window.innerHeight * 0.30, 60);
+                const paddingX = Math.max(window.innerWidth * 0.08, 10);
+                const paddingTop = Math.max(window.innerHeight * 0.03, 5);
+                const paddingBottom = Math.max(window.innerHeight * 0.35, 80);
 
                 map.fitBounds(bounds, {
                     paddingTopLeft: [paddingX, paddingTop],
@@ -204,10 +206,10 @@
                 });
 
                 setTimeout(() => {
-                    map.panBy([0, -window.innerHeight * 0.15], { animate: true });
+                    map.panBy([0, -window.innerHeight * 0.18], { animate: true });
                 }, 400);
 
-                // Calculate initial bearing from start to the next point
+                // Set bearing for journey effect
                 if (path.coordinates.length > 1) {
                     const nextPoint = path.coordinates[1];
                     const bearing = calculateBearing(
@@ -239,11 +241,11 @@
             legend.onAdd = function () {
                 const div = L.DomUtil.create("div", "legend");
                 div.innerHTML = `
-                    <i style="background: #dddddd"></i> Roads<br>
-                    <i style="background: #f5f5f5; border: 1px solid #b0b0b0;"></i> Buildings<br>
-                    <i style="background: #4285F4"></i> Shortest Path<br>
-                    <img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" alt="Starting Point Icon"> Starting Point<br>
-                    <img src="https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" alt="Finishing Point Icon"> Finishing Point
+                    <i style="background: #bdbdbd"></i> Roads<br>
+                    <i style="background: #edf2f4; border: 1px solid #8d99ae;"></i> Buildings<br>
+                    <i style="background: #FF6F00"></i> Shortest Path<br>
+                    <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" alt="Starting Point Icon"> Starting Point<br>
+                    <img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" alt="Finishing Point Icon"> Finishing Point
                 `;
                 return div;
             };
