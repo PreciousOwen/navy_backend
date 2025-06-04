@@ -75,16 +75,14 @@
 
     <script>
         let map, userMarker;
-        let roads = [];
-        let buildings = [];
-        let shortestPath = null;
+        let roads = [], buildings = [], shortestPath = null;
 
         try {
             roads = JSON.parse('{{ road_data_json|escapejs }}');
             buildings = JSON.parse('{{ building_data_json|escapejs }}');
             shortestPath = {{ shortest_path_json|default:"null"|safe }};
         } catch (error) {
-            console.error("Error parsing map data:", error);
+            console.error("Failed to parse JSON:", error);
         }
 
         const defaultCoords = [-6.814328, 39.281655];
@@ -112,18 +110,12 @@
         function renderRoads() {
             roads.forEach((road, i) => {
                 try {
-                    const geojson = typeof road.geometry === "string"
-                        ? JSON.parse(road.geometry)
-                        : road.geometry;
+                    const geojson = typeof road.geometry === "string" ? JSON.parse(road.geometry) : road.geometry;
                     L.geoJSON(geojson, {
-                        style: {
-                            color: "#dddddd",
-                            weight: 5,
-                            opacity: 0.9
-                        }
+                        style: { color: "#dddddd", weight: 5, opacity: 0.9 }
                     }).addTo(map).bindPopup(`<b>Road:</b> ${road.name || "Unnamed Road"}`);
                 } catch (err) {
-                    console.error(`Failed to render road ${i + 1}`, err);
+                    console.error(`Road ${i + 1} failed`, err);
                 }
             });
         }
@@ -131,9 +123,7 @@
         function renderBuildings() {
             buildings.forEach((building, i) => {
                 try {
-                    const geojson = typeof building.geometry === "string"
-                        ? JSON.parse(building.geometry)
-                        : building.geometry;
+                    const geojson = typeof building.geometry === "string" ? JSON.parse(building.geometry) : building.geometry;
                     L.geoJSON(geojson, {
                         style: {
                             color: "#b0b0b0",
@@ -143,13 +133,24 @@
                         }
                     }).addTo(map).bindPopup(`<b>Building:</b> ${building.name || "Unnamed Building"}`);
                 } catch (err) {
-                    console.error(`Failed to render building ${i + 1}`, err);
+                    console.error(`Building ${i + 1} failed`, err);
                 }
             });
         }
 
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const toRad = deg => deg * Math.PI / 180;
+            const toDeg = rad => rad * 180 / Math.PI;
+            const φ1 = toRad(lat1), φ2 = toRad(lat2);
+            const Δλ = toRad(lon2 - lon1);
+            const y = Math.sin(Δλ) * Math.cos(φ2);
+            const x = Math.cos(φ1) * Math.sin(φ2) -
+                      Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+            return (toDeg(Math.atan2(y, x)) + 360) % 360;
+        }
+
         function renderShortestPath() {
-            if (!shortestPath) return;
+            if (!shortestPath?.coordinates?.length) return;
 
             const pathLayer = L.geoJSON(shortestPath, {
                 style: {
@@ -175,13 +176,10 @@
             });
 
             L.marker([startPoint[1], startPoint[0]], { icon: startIcon })
-                .addTo(map)
-                .bindPopup("Starting Point")
-                .openPopup();
+                .addTo(map).bindPopup("Starting Point").openPopup();
 
             L.marker([endPoint[1], endPoint[0]], { icon: endIcon })
-                .addTo(map)
-                .bindPopup("Finishing Point");
+                .addTo(map).bindPopup("Finishing Point");
 
             map.fitBounds(pathLayer.getBounds(), {
                 padding: [50, 50],
@@ -190,26 +188,15 @@
             });
 
             if (shortestPath.coordinates.length > 1) {
-                const [startLat, startLng] = [startPoint[1], startPoint[0]];
-                const [nextLat, nextLng] = [shortestPath.coordinates[1][1], shortestPath.coordinates[1][0]];
-                const bearing = calculateBearing(startLat, startLng, nextLat, nextLng);
-                map.setBearing(bearing);
+                const [sLat, sLng] = [startPoint[1], startPoint[0]];
+                const [nLat, nLng] = [shortestPath.coordinates[1][1], shortestPath.coordinates[1][0]];
+                map.setBearing(calculateBearing(sLat, sLng, nLat, nLng));
             }
         }
 
-        function calculateBearing(lat1, lon1, lat2, lon2) {
-            const toRad = deg => deg * Math.PI / 180;
-            const toDeg = rad => rad * 180 / Math.PI;
-
-            const φ1 = toRad(lat1), φ2 = toRad(lat2);
-            const Δλ = toRad(lon2 - lon1);
-            const y = Math.sin(Δλ) * Math.cos(φ2);
-            const x = Math.cos(φ1) * Math.sin(φ2) -
-                      Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-            return (toDeg(Math.atan2(y, x)) + 360) % 360;
-        }
-
         function simulateUserPosition() {
+            if (!shortestPath?.coordinates?.length) return;
+
             const coords = shortestPath.coordinates;
             let index = 0;
 
@@ -227,7 +214,6 @@
                     index++;
                     const [lon, lat] = coords[index];
                     const [nextLon, nextLat] = coords[index + 1] || [lon, lat];
-
                     userMarker.setLatLng([lat, lon]);
                     const bearing = calculateBearing(lat, lon, nextLat, nextLon);
                     map.setBearing(bearing);
@@ -241,7 +227,7 @@
 
         function addLegend() {
             const legend = L.control({ position: "bottomright" });
-            legend.onAdd = function () {
+            legend.onAdd = () => {
                 const div = L.DomUtil.create("div", "legend");
                 div.innerHTML = `
                     <i style="background: #dddddd;"></i> Roads<br>
@@ -258,10 +244,8 @@
         map.on('load', () => {
             renderRoads();
             renderBuildings();
-            if (shortestPath) {
-                renderShortestPath();
-                simulateUserPosition();
-            }
+            renderShortestPath();
+            simulateUserPosition();
             addLegend();
         });
 
