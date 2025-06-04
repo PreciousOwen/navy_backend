@@ -2,14 +2,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>University Roads and Buildings</title>
 
-    <link href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css" rel="stylesheet" />
-    <script src="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-rotate@0.2.7/dist/leaflet-rotate.js"></script>
 
     <style>
+        #map { height: 600px; width: 100%; }
         body {
             font-family: 'Segoe UI', sans-serif;
             margin: 0;
@@ -22,34 +24,6 @@
             margin: 20px 0;
             color: #444;
         }
-        #map {
-            height: 600px;
-            width: 100%;
-        }
-        form {
-            text-align: center;
-            margin-bottom: 10px;
-        }
-        button {
-            padding: 8px 16px;
-            margin-top: 10px;
-            font-size: 16px;
-            cursor: pointer;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            transition: background-color 0.2s ease;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        /* Custom legend styling for MapLibre GL JS */
-        .maplibregl-ctrl-bottom-right {
-            position: absolute;
-            right: 10px;
-            bottom: 10px;
-        }
         .legend {
             background: white;
             padding: 10px;
@@ -58,7 +32,6 @@
             font-size: 14px;
             line-height: 18px;
             color: #555;
-            z-index: 100; /* Ensure it's above the map */
         }
         .legend i {
             width: 18px;
@@ -77,287 +50,231 @@
 </head>
 <body>
     <h2>University Roads and Buildings</h2>
-
     <form method="POST">
         {% csrf_token %}
         {{ form.as_p }}
         <button type="submit">Find Shortest Path</button>
     </form>
-
     <div id="map"></div>
 
     <script>
-        let map;
+        console.log("JavaScript is running!");
+
         let roads = [];
         let buildings = [];
         let shortestPath = null;
-        let userMarker = null; // MapLibre GL JS Marker object
 
         try {
             roads = JSON.parse('{{ road_data_json|escapejs }}');
             buildings = JSON.parse('{{ building_data_json|escapejs }}');
             shortestPath = {{ shortest_path_json|default:"null"|safe }};
+            console.log("Road Data:", roads);
+            console.log("Building Data:", buildings);
+            console.log("Shortest Path:", shortestPath);
         } catch (error) {
-            console.error("Error parsing map data:", error);
+            console.error("Error parsing data:", error);
         }
 
-        const defaultCoords = [39.281655, -6.814328]; // [longitude, latitude] for MapLibre GL JS
-        const initialPoint = shortestPath?.coordinates?.[0] || defaultCoords;
+        let map;
+        let userMarker;
 
-        // Initialize MapLibre GL JS map
-        map = new maplibregl.Map({
-            container: 'map', // container ID
-            // Using a CartoDB Positron style, which is a good base map
-            style: 'https://tiles.stadiamaps.com/styles/alidade_smooth.json',
-            center: initialPoint, // starting position [lng, lat]
-            zoom: 17, // starting zoom
-            pitch: 45, // Map inclination (tilt) in degrees. Adjust as needed.
-            bearing: 0, // Map rotation (bearing) in degrees.
-            antialias: true // Smoother rendering
-        });
+        const initialPosition = shortestPath && shortestPath.coordinates.length > 0
+            ? shortestPath.coordinates[0]
+            : [-6.814328, 39.281655];
 
-        // Add navigation controls (zoom and compass)
-        map.addControl(new maplibregl.NavigationControl(), 'top-right');
+        map = L.map('map', {
+            zoom: 18,
+            zoomSnap: 0.1,
+            zoomDelta: 0.5,
+            zoomAnimation: true,
+            minZoom: 10,
+            maxZoom: 20,
+            rotate: true,
+            touchRotate: true,
+            rotateControl: false,
+            bearing: 0
+        }).setView([initialPosition[1], initialPosition[0]], 18);
 
-        // Event listener for when the map style is loaded
-        map.on('load', () => {
-            renderRoads();
-            renderBuildings();
-            if (shortestPath) {
-                renderShortestPath();
-                simulateUserPosition(); // Note: This will be a simplified simulation without marker rotation
-            }
-            addLegend();
-        });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors © <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
 
-        function renderRoads() {
-            // Add a source for roads
-            map.addSource('roads-data', {
-                'type': 'geojson',
-                'data': {
-                    'type': 'FeatureCollection',
-                    'features': roads.map(road => ({
-                        'type': 'Feature',
-                        'geometry': typeof road.geometry === "string" ? JSON.parse(road.geometry) : road.geometry,
-                        'properties': { 'name': road.name || "Unnamed Road" }
-                    }))
+        function renderRoads(roads) {
+            roads.forEach(function(road, index) {
+                try {
+                    let geojson = road.geometry;
+                    if (typeof geojson === "string") {
+                        geojson = JSON.parse(geojson);
+                    }
+                    L.geoJSON(geojson, {
+                        style: {
+                            color: "#dddddd",
+                            weight: 5,
+                            opacity: 0.9
+                        }
+                    }).addTo(map).bindPopup(`<b>Road:</b> ${road.name || "Unnamed Road"}`);
+                } catch (error) {
+                    console.error(`Error rendering road ${index + 1}:`, error);
                 }
-            });
-
-            // Add a layer for roads
-            map.addLayer({
-                'id': 'roads-layer',
-                'type': 'line',
-                'source': 'roads-data',
-                'paint': {
-                    'line-color': '#dddddd',
-                    'line-width': 5,
-                    'line-opacity': 0.9
-                }
-            });
-
-            // Add popups for roads
-            map.on('click', 'roads-layer', (e) => {
-                const coordinates = e.lngLat;
-                const description = `<b>Road:</b> ${e.features[0].properties.name}`;
-                new maplibregl.Popup()
-                    .setLngLat(coordinates)
-                    .setHTML(description)
-                    .addTo(map);
             });
         }
 
-        function renderBuildings() {
-            // Add a source for buildings
-            map.addSource('buildings-data', {
-                'type': 'geojson',
-                'data': {
-                    'type': 'FeatureCollection',
-                    'features': buildings.map(building => ({
-                        'type': 'Feature',
-                        'geometry': typeof building.geometry === "string" ? JSON.parse(building.geometry) : building.geometry,
-                        'properties': { 'name': building.name || "Unnamed Building" }
-                    }))
+        function renderBuildings(buildings) {
+            buildings.forEach(function(building, index) {
+                try {
+                    let geojson = building.geometry;
+                    if (typeof geojson === "string") {
+                        geojson = JSON.parse(geojson);
+                    }
+                    L.geoJSON(geojson, {
+                        style: {
+                            color: "#b0b0b0",
+                            weight: 1,
+                            fillColor: "#f5f5f5",
+                            fillOpacity: 0.7
+                        }
+                    }).addTo(map).bindPopup(`<b>Building:</b> ${building.name || "Unnamed Building"}`);
+                } catch (error) {
+                    console.error(`Error rendering building ${index + 1}:`, error);
                 }
-            });
-
-            // Add a layer for buildings
-            map.addLayer({
-                'id': 'buildings-layer',
-                'type': 'fill',
-                'source': 'buildings-data',
-                'paint': {
-                    'fill-color': '#f5f5f5',
-                    'fill-opacity': 0.7,
-                    'fill-outline-color': '#b0b0b0'
-                }
-            });
-
-            // Add popups for buildings
-            map.on('click', 'buildings-layer', (e) => {
-                const coordinates = e.lngLat;
-                const description = `<b>Building:</b> ${e.features[0].properties.name}`;
-                new maplibregl.Popup()
-                    .setLngLat(coordinates)
-                    .setHTML(description)
-                    .addTo(map);
             });
         }
 
-        function renderShortestPath() {
-            if (!shortestPath) return;
+        function renderShortestPath(path) {
+            if (path) {
+                const pathLayer = L.geoJSON(path, {
+                    style: {
+                        color: "#4285F4",
+                        weight: 7,
+                        opacity: 0.95
+                    }
+                }).addTo(map).bindPopup("<b>Shortest Path</b>");
 
-            // Add source for shortest path
-            map.addSource('shortest-path-data', {
-                'type': 'geojson',
-                'data': shortestPath
-            });
+                const startIcon = L.icon({
+                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34]
+                });
 
-            // Add layer for shortest path
-            map.addLayer({
-                'id': 'shortest-path-layer',
-                'type': 'line',
-                'source': 'shortest-path-data',
-                'paint': {
-                    'line-color': '#4285F4',
-                    'line-width': 7,
-                    'line-opacity': 0.95
+                const finishIcon = L.icon({
+                    iconUrl: 'https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41],
+                    popupAnchor: [1, -34]
+                });
+
+                const startPoint = path.coordinates[0];
+                const endPoint = path.coordinates[path.coordinates.length - 1];
+
+                L.marker([startPoint[1], startPoint[0]], { icon: startIcon })
+                    .addTo(map)
+                    .bindPopup("<b>Starting Point</b>")
+                    .openPopup();
+
+                L.marker([endPoint[1], endPoint[0]], { icon: finishIcon })
+                    .addTo(map)
+                    .bindPopup("<b>Finishing Point</b>");
+
+                // Zoom to fit the entire route
+                const bounds = pathLayer.getBounds();
+                map.fitBounds(bounds, {
+                    padding: [50, 50], // Add padding for better visibility
+                    maxZoom: 18, // Don't zoom in too close
+                    minZoom: 16 // Ensure enough detail for navigation
+                });
+
+                // Calculate initial heading from start to the next point
+                if (path.coordinates.length > 1) {
+                    const nextPoint = path.coordinates[1];
+                    const bearing = calculateBearing(
+                        startPoint[1], startPoint[0],
+                        nextPoint[1], nextPoint[0]
+                    );
+                    map.setBearing(bearing);
                 }
-            });
-
-            // Add popups for shortest path
-            map.on('click', 'shortest-path-layer', (e) => {
-                const coordinates = e.lngLat;
-                new maplibregl.Popup()
-                    .setLngLat(coordinates)
-                    .setHTML("<b>Shortest Path</b>")
-                    .addTo(map);
-            });
-
-            const startPoint = shortestPath.coordinates[0];
-            const endPoint = shortestPath.coordinates.at(-1);
-
-            // Create custom HTML elements for markers
-            const startEl = document.createElement('div');
-            startEl.className = 'marker start-marker'; // Add a class for potential custom styling
-            startEl.style.backgroundImage = `url('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png')`;
-            startEl.style.width = '25px';
-            startEl.style.height = '41px';
-            startEl.style.backgroundSize = 'contain';
-
-            const endEl = document.createElement('div');
-            endEl.className = 'marker end-marker'; // Add a class for potential custom styling
-            endEl.style.backgroundImage = `url('https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png')`;
-            endEl.style.width = '25px';
-            endEl.style.height = '41px';
-            endEl.style.backgroundSize = 'contain';
-
-            // Add Start Marker
-            new maplibregl.Marker({ element: startEl, anchor: 'bottom' })
-                .setLngLat(startPoint)
-                .setPopup(new maplibregl.Popup().setHTML("Starting Point"))
-                .addTo(map);
-
-            // Add End Marker
-            new maplibregl.Marker({ element: endEl, anchor: 'bottom' })
-                .setLngLat(endPoint)
-                .setPopup(new maplibregl.Popup().setHTML("Finishing Point"))
-                .addTo(map);
-
-            // Fit map to path bounds with pitch and bearing
-            const bounds = new maplibregl.LngLatBounds(startPoint, endPoint);
-            shortestPath.coordinates.forEach(coord => {
-                bounds.extend(coord);
-            });
-
-            map.fitBounds(bounds, {
-                padding: { top: 50, bottom: 50, left: 50, right: 50 },
-                maxZoom: 18,
-                pitch: 45, // Set pitch when fitting to bounds
-                bearing: 0 // Optional: Set a bearing when fitting to bounds
-            });
-
-            // Set initial map bearing to align with the path
-            if (shortestPath.coordinates.length > 1) {
-                const [startLng, startLat] = startPoint;
-                const [nextLng, nextLat] = shortestPath.coordinates[1];
-                const bearing = calculateBearing(startLat, startLng, nextLat, nextLng);
-                map.setBearing(bearing);
             }
         }
 
         function calculateBearing(lat1, lon1, lat2, lon2) {
-            const toRad = deg => deg * Math.PI / 180;
-            const toDeg = rad => rad * 180 / Math.PI;
+            const toRad = (degrees) => degrees * Math.PI / 180;
+            const toDeg = (radians) => radians * 180 / Math.PI;
 
             const φ1 = toRad(lat1), φ2 = toRad(lat2);
             const Δλ = toRad(lon2 - lon1);
+
             const y = Math.sin(Δλ) * Math.cos(φ2);
             const x = Math.cos(φ1) * Math.sin(φ2) -
-                      Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
-            return (toDeg(Math.atan2(y, x)) + 360) % 360;
+                     Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+            const θ = Math.atan2(y, x);
+
+            return (toDeg(θ) + 360) % 360;
         }
 
-        // Simplified simulateUserPosition for MapLibre GL JS
+        function addLegend() {
+            const legend = L.control({ position: "bottomright" });
+            legend.onAdd = function () {
+                const div = L.DomUtil.create("div", "legend");
+                div.innerHTML = `
+                    <i style="background: #dddddd"></i> Roads<br>
+                    <i style="background: #f5f5f5; border: 1px solid #b0b0b0;"></i> Buildings<br>
+                    <i style="background: #4285F4"></i> Shortest Path<br>
+                    <img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" alt="Starting Point Icon"> Starting Point<br>
+                    <img src="https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" alt="Finishing Point Icon"> Finishing Point
+                `;
+                return div;
+            };
+            legend.addTo(map);
+        }
+
         function simulateUserPosition() {
-            if (!shortestPath || shortestPath.coordinates.length < 2) return;
+            const startPoint = shortestPath.coordinates[0];
+            userMarker = L.marker([startPoint[1], startPoint[0]], {
+                rotationAngle: 0,
+                icon: L.icon({
+                    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+                    iconSize: [25, 41],
+                    iconAnchor: [12, 41]
+                })
+            }).addTo(map);
 
-            const coords = shortestPath.coordinates;
-            let index = 0;
-
-            // Create a custom HTML element for the user marker
-            const userEl = document.createElement('div');
-            userEl.className = 'user-marker'; // Add a class for potential custom styling
-            userEl.style.backgroundImage = `url('https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png')`;
-            userEl.style.width = '25px';
-            userEl.style.height = '41px';
-            userEl.style.backgroundSize = 'contain';
-
-            userMarker = new maplibregl.Marker({ element: userEl, anchor: 'bottom' })
-                .setLngLat(coords[0])
-                .addTo(map);
-
+            let currentIndex = 0;
             const interval = setInterval(() => {
-                if (index < coords.length - 1) {
-                    index++;
-                    const [lon, lat] = coords[index];
-                    const [nextLon, nextLat] = coords[index + 1] || [lon, lat];
+                if (currentIndex < shortestPath.coordinates.length - 1) {
+                    currentIndex++;
+                    const currentPoint = shortestPath.coordinates[currentIndex];
+                    const nextPoint = shortestPath.coordinates[currentIndex + 1] || currentPoint;
 
-                    userMarker.setLngLat([lon, lat]);
+                    userMarker.setLatLng([currentPoint[1], currentPoint[0]]);
 
-                    // Calculate bearing for map rotation
-                    const bearing = calculateBearing(lat, lon, nextLat, nextLon);
+                    const bearing = calculateBearing(
+                        currentPoint[1], currentPoint[0],
+                        nextPoint[1], nextPoint[0]
+                    );
+                    map.setBearing(bearing);
+                    userMarker.setRotationAngle(bearing);
 
-                    // Move map and rotate
-                    map.flyTo({
-                        center: [lon, lat],
-                        bearing: bearing,
-                        speed: 0.8, // Adjust speed as needed
-                        curve: 1, // How much the route curve is between old and new center, 0-1
-                        easing: (t) => t // Linear easing
-                    });
+                    // Optionally re-center the map on the user as they move
+                    map.panTo([currentPoint[1], currentPoint[0]], { animate: true });
                 } else {
                     clearInterval(interval);
-                    // Optionally remove the user marker or show "arrived" message
                 }
-            }, 2000); // Adjust interval for simulation speed
+            }, 2000);
         }
 
-        // Custom Legend implementation for MapLibre GL JS (HTML/CSS based)
-        function addLegend() {
-            const legendContainer = document.createElement('div');
-            legendContainer.className = 'legend';
-            legendContainer.innerHTML = `
-                <i style="background: #dddddd;"></i> Roads<br>
-                <i style="background: #f5f5f5; border: 1px solid #b0b0b0;"></i> Buildings<br>
-                <i style="background: #4285F4;"></i> Shortest Path<br>
-                <img src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png" /> Starting Point<br>
-                <img src="https://cdn.rawgit.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png" /> Finishing Point
-            `;
-            // Add the legend to the map container, you can also use map.addControl
-            document.getElementById('map').appendChild(legendContainer);
-        }
+        map.on('load', function () {
+            if (roads.length > 0) renderRoads(roads);
+            if (buildings.length > 0) renderBuildings(buildings);
+            if (shortestPath) {
+                renderShortestPath(shortestPath);
+                simulateUserPosition();
+            }
+            addLegend();
+        });
 
+        map.fire('load');
     </script>
 </body>
 </html>
