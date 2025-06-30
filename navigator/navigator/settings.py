@@ -31,12 +31,12 @@ DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 'yes', 'on')
 # Allowed hosts from environment variable, whitespace stripped
 # Append 'silicon4forge.org' explicitly to ensure it's included
 env_allowed_hosts = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,0.0.0.0').split(',')]
-if 'silicon4forge.org' not in env_allowed_hosts:
-    env_allowed_hosts.append('silicon4forge.org')
+if 'navigator.silicon4forge.org' not in env_allowed_hosts:
+    env_allowed_hosts.append('navigator.silicon4forge.org')
 ALLOWED_HOSTS = env_allowed_hosts
 
-if 'www.silicon4forge.org' not in env_allowed_hosts:
-    env_allowed_hosts.append('www.silicon4forge.org')
+if 'navigator.silicon4forge.org' not in env_allowed_hosts:
+    env_allowed_hosts.append('navigator.silicon4forge.org')
 ALLOWED_HOSTS = env_allowed_hosts
 
 
