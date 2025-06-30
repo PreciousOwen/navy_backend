@@ -782,3 +782,42 @@ def fetch_destinations(request):
     except Exception as e:
         logger.error(f"Error fetching destinations: {str(e)}")  # Log any errors
         return JsonResponse({"error": f"Error fetching destinations: {str(e)}"}, status=500)
+
+# In the shortest path calculation (see university_roads and university_blocks_roads):
+
+# The code builds a NetworkX graph where:
+# - Each node is a coordinate tuple (longitude, latitude) from the road geometries (i.e., every point along every road linestring).
+# - Edges are created between consecutive points along each road, with weights equal to their geometric distance.
+
+# When calculating the shortest path:
+# - The nearest node in the graph to the start and end coordinates is found (using Shapely's nearest_points).
+# - The shortest path is computed between these two nodes using NetworkX.
+
+# Therefore:
+# - The "nodes" in the graph are not special "switching points" or "routing points" (like intersections or junctions).
+# - They are simply all the points (vertices) that make up the road polylines.
+# - The path can "switch" at any of these points, not just at intersections.
+
+# If you want only intersections/junctions as routing points, you would need to preprocess the road data to extract only those points as graph nodes.
+
+# To get all recently added roads (e.g., via the add_path view), you can add a simple Django view to list them.
+# Example: List the most recent N CachedRoads, ordered by osm_id descending.
+
+from django.views.decorators.http import require_GET
+
+@require_GET
+def recent_added_roads(request):
+    """
+    Returns the most recently added roads in CachedRoad as JSON.
+    """
+    N = int(request.GET.get("limit", 10))  # Default to 10, can override with ?limit=20
+    roads = CachedRoad.objects.order_by('-osm_id')[:N]
+    data = [
+        {
+            "osm_id": road.osm_id,
+            "name": road.name,
+            "geometry": road.geometry,
+        }
+        for road in roads
+    ]
+    return JsonResponse(data, safe=False)

@@ -50,6 +50,9 @@ urlpatterns = [
     # URL for fetching destinations
     path('fetch_destinations/', fetch_destinations, name='fetch_destinations'),
 
+    # URL for listing recent added roads
+    path('recent-roads/', views.recent_added_roads, name='recent_added_roads'),
+
     # Intro page
     path('intro/', TemplateView.as_view(template_name="intro.html"), name='intro'),
 ]
