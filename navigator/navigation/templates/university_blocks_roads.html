@@ -2,244 +2,224 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>University Roads and Buildings</title>
+  <meta charset="utf-8" />
+  <title>University Roads and Buildings</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- Leaflet and Rotate Plugin -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-rotate@0.2.7/dist/leaflet-rotate.js"></script>
+  <!-- Mapbox GL -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
 
-    <style>
-        #map { height: 600px; width: 100%; }
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f4f4f4;
-            color: #333;
-        }
-        h2 {
-            text-align: center;
-            margin: 20px 0;
-            color: #444;
-        }
-        .legend {
-            background: white;
-            padding: 10px;
-            border-radius: 5px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-            font-size: 14px;
-            line-height: 18px;
-            color: #555;
-        }
-        .legend i {
-            width: 18px;
-            height: 18px;
-            float: left;
-            margin-right: 8px;
-            opacity: 0.7;
-        }
-        .legend img {
-            width: 18px;
-            height: 18px;
-            vertical-align: middle;
-            margin-right: 8px;
-        }
-        .leaflet-interactive.shortest-path-glow {
-            stroke: #FFD180;
-            stroke-width: 10;
-            filter: drop-shadow(0 0 12px #FFD180cc);
-            opacity: 0.85;
-            animation: pathGlow 2s infinite alternate;
-        }
-        @keyframes pathGlow {
-            0% { filter: drop-shadow(0 0 12px #FFD180cc); opacity: 0.85; }
-            100% { filter: drop-shadow(0 0 24px #FFE082ff); opacity: 1; }
-        }
-    </style>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f4f4;
+    }
+    h2 {
+      text-align: center;
+      margin: 16px;
+    }
+    form {
+      margin: 0 auto;
+      text-align: center;
+    }
+    #map {
+      width: 100%;
+      height: 600px;
+    }
+    .mapboxgl-popup {
+      max-width: 200px;
+    }
+    .legend {
+      background: white;
+      padding: 10px;
+      font-size: 14px;
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      border-radius: 5px;
+    }
+    .legend i {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+    .legend img {
+      width: 16px;
+      height: 16px;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+  </style>
 </head>
 <body>
-    <h2>University Roads and Buildings</h2>
-    <form method="POST">
-        {% csrf_token %}
-        {{ form.as_p }}
-        <button type="submit">Find Shortest Path</button>
-    </form>
-    <div id="map"></div>
+  <h2>University Roads and Buildings</h2>
+  <form method="POST">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Find Shortest Path</button>
+  </form>
+  <div id="map"></div>
+  <div class="legend">
+    <div><i style="background:#bdbdbd"></i> Roads</div>
+    <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
+    <div><i style="background:#FFD180"></i> Shortest Path</div>
+    <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" /> Start</div>
+    <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" /> Finish</div>
+  </div>
 
-    <script>
-        let roads = [], buildings = [], shortestPath = null;
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoicHJlY2lvdXNvd2VuIiwiYSI6ImNtY2syY3lhdzA0dWsya3NkdHV1dnVqemIifQ.u6T-9Rj30whmYAFL9lG5Ng';
 
-        try {
-            roads = JSON.parse('{{ road_data_json|escapejs }}');
-            buildings = JSON.parse('{{ building_data_json|escapejs }}');
-            shortestPath = {{ shortest_path_json|default:"null"|safe }};
-        } catch (error) {
-            console.error("Error parsing JSON data:", error);
+    let roads = [];
+    let buildings = [];
+    let shortestPath = null;
+
+    try {
+      roads = JSON.parse(`{{ road_data_json|escapejs }}`);
+      buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
+      shortestPath = {{ shortest_path_json|default:"null"|safe }};
+    } catch (err) {
+      console.error("Failed to parse data", err);
+    }
+
+    const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
+    const end = shortestPath?.coordinates?.[shortestPath.coordinates.length - 1];
+
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: initial,
+      zoom: 18,
+      pitch: 60, // tilt
+      bearing: end ? calculateBearing(initial, end) : 0,
+      antialias: true
+    });
+
+    map.addControl(new mapboxgl.NavigationControl());
+
+    map.on('load', () => {
+      // 3D buildings layer
+      map.addLayer({
+        id: '3d-buildings',
+        source: 'composite',
+        'source-layer': 'building',
+        filter: ['==', 'extrude', 'true'],
+        type: 'fill-extrusion',
+        minzoom: 15,
+        paint: {
+          'fill-extrusion-color': '#aaa',
+          'fill-extrusion-height': ['get', 'height'],
+          'fill-extrusion-base': ['get', 'min_height'],
+          'fill-extrusion-opacity': 0.6
         }
+      });
 
-        const initialPosition = shortestPath && shortestPath.coordinates.length > 0
-            ? shortestPath.coordinates[0]
-            : [-6.814328, 39.281655];
+      // Roads
+      roads.forEach((road) => {
+        const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
+        map.addSource(`road-${road.id}`, {
+          type: 'geojson',
+          data: geo
+        });
+        map.addLayer({
+          id: `road-line-${road.id}`,
+          type: 'line',
+          source: `road-${road.id}`,
+          paint: {
+            'line-color': '#bdbdbd',
+            'line-width': 5
+          }
+        });
+      });
 
-        const map = L.map('map', {
-            zoom: 18,
-            zoomSnap: 0.1,
-            zoomDelta: 0.5,
-            zoomAnimation: true,
-            minZoom: 10,
-            maxZoom: 20,
-            rotate: true,
-            touchRotate: true,
-            rotateControl: false,
-            bearing: 0
-        }).setView([initialPosition[1], initialPosition[0]], 18);
+      // Buildings
+      buildings.forEach((b) => {
+        const geo = typeof b.geometry === 'string' ? JSON.parse(b.geometry) : b.geometry;
+        map.addSource(`building-${b.id}`, {
+          type: 'geojson',
+          data: geo
+        });
+        map.addLayer({
+          id: `building-fill-${b.id}`,
+          type: 'fill',
+          source: `building-${b.id}`,
+          paint: {
+            'fill-color': '#edf2f4',
+            'fill-outline-color': '#8d99ae',
+            'fill-opacity': 0.8
+          }
+        });
+      });
 
-        // ✅ Mapbox tiles inside Leaflet
-        L.tileLayer('https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoicHJlY2lvdXNvd2VuIiwiYSI6ImNtY2syY3lhdzA0dWsya3NkdHV1dnVqemIifQ.u6T-9Rj30whmYAFL9lG5Ng', {
-            tileSize: 512,
-            zoomOffset: -1,
-            attribution: '© Mapbox © OpenStreetMap',
-            maxZoom: 20
-        }).addTo(map);
-
-        function renderRoads(roads) {
-            roads.forEach((road, i) => {
-                try {
-                    let geojson = typeof road.geometry === "string"
-                        ? JSON.parse(road.geometry)
-                        : road.geometry;
-
-                    L.geoJSON(geojson, {
-                        style: {
-                            color: "#bdbdbd",
-                            weight: 6,
-                            opacity: 0.8
-                        }
-                    }).addTo(map).bindPopup(`<b>Road:</b> ${road.name || "Unnamed Road"}`);
-                } catch (e) {
-                    console.error(`Error rendering road ${i}:`, e);
-                }
-            });
-        }
-
-        function renderBuildings(buildings) {
-            buildings.forEach((building, i) => {
-                try {
-                    let geojson = typeof building.geometry === "string"
-                        ? JSON.parse(building.geometry)
-                        : building.geometry;
-
-                    L.geoJSON(geojson, {
-                        style: {
-                            color: "#8d99ae",
-                            weight: 1,
-                            fillColor: "#edf2f4",
-                            fillOpacity: 0.8
-                        }
-                    }).addTo(map).bindPopup(`<b>Building:</b> ${building.name || "Unnamed Building"}`);
-                } catch (e) {
-                    console.error(`Error rendering building ${i}:`, e);
-                }
-            });
-        }
-
-        function calculateRotationAngle(start, end) {
-            const toRad = deg => deg * Math.PI / 180;
-            const toDeg = rad => rad * 180 / Math.PI;
-            const lat1 = toRad(start[1]), lon1 = toRad(start[0]);
-            const lat2 = toRad(end[1]), lon2 = toRad(end[0]);
-            const dLon = lon2 - lon1;
-            const y = Math.sin(dLon) * Math.cos(lat2);
-            const x = Math.cos(lat1) * Math.sin(lat2) -
-                      Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-            return (toDeg(Math.atan2(y, x)) + 360) % 360;
-        }
-
-        function renderShortestPath(path) {
-            if (!path) return;
-
-            const pathLayer = L.geoJSON(path, {
-                style: {
-                    color: "#FFD180",
-                    weight: 10,
-                    opacity: 0.95,
-                    className: "shortest-path-glow"
-                }
-            }).addTo(map).bindPopup("<b>Shortest Path</b>");
-
-            const startIcon = L.icon({
-                iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
-                iconSize: [38, 48],
-                iconAnchor: [19, 48],
-                popupAnchor: [0, -40]
-            });
-
-            const finishIcon = L.icon({
-                iconUrl: 'https://cdn-icons-png.flaticon.com/512/190/190411.png',
-                iconSize: [38, 48],
-                iconAnchor: [19, 48],
-                popupAnchor: [0, -40]
-            });
-
-            const start = path.coordinates[0];
-            const end = path.coordinates[path.coordinates.length - 1];
-
-            const bounds = pathLayer.getBounds();
-            map.fitBounds(bounds, {
-                padding: [40, 40],
-                maxZoom: 18,
-                minZoom: 16
-            });
-
-            const angle = calculateRotationAngle(start, end);
-            map.setBearing(angle);
-
-            setTimeout(() => {
-                const startLatLng = L.latLng(start[1], start[0]);
-                const startPixel = map.latLngToContainerPoint(startLatLng);
-                const offsetX = window.innerWidth / 2 - startPixel.x;
-                const offsetY = window.innerHeight * 0.8 - startPixel.y;
-                map.panBy([offsetX, offsetY], { animate: true });
-            }, 500);
-
-            setTimeout(() => {
-                L.marker([start[1], start[0]], { icon: startIcon })
-                    .addTo(map)
-                    .bindPopup("Starting Point")
-                    .openPopup();
-                L.marker([end[1], end[0]], { icon: finishIcon })
-                    .addTo(map)
-                    .bindPopup("Finishing Point");
-            }, 800);
-        }
-
-        function addLegend() {
-            const legend = L.control({ position: "bottomright" });
-            legend.onAdd = function () {
-                const div = L.DomUtil.create("div", "legend");
-                div.innerHTML = `
-                    <i style="background: #bdbdbd"></i> Roads<br>
-                    <i style="background: #edf2f4; border: 1px solid #8d99ae;"></i> Buildings<br>
-                    <i style="background: #FFD180"></i> Shortest Path<br>
-                    <img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" /> Starting Point<br>
-                    <img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" /> Finishing Point
-                `;
-                return div;
-            };
-            legend.addTo(map);
-        }
-
-        map.on("load", () => {
-            if (roads.length) renderRoads(roads);
-            if (buildings.length) renderBuildings(buildings);
-            if (shortestPath) renderShortestPath(shortestPath);
-            addLegend();
+      // Path
+      if (shortestPath) {
+        const pathGeo = {
+          type: "Feature",
+          geometry: shortestPath
+        };
+        map.addSource('shortest-path', {
+          type: 'geojson',
+          data: pathGeo
+        });
+        map.addLayer({
+          id: 'shortest-path-line',
+          type: 'line',
+          source: 'shortest-path',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#FFD180',
+            'line-width': 8
+          }
         });
 
-        map.fire("load");
-    </script>
+        // Markers
+        const startIcon = 'https://cdn-icons-png.flaticon.com/512/684/684908.png';
+        const endIcon = 'https://cdn-icons-png.flaticon.com/512/190/190411.png';
+
+        new mapboxgl.Marker({ element: createIcon(startIcon) })
+          .setLngLat(initial)
+          .setPopup(new mapboxgl.Popup().setText("Start Point"))
+          .addTo(map);
+
+        new mapboxgl.Marker({ element: createIcon(endIcon) })
+          .setLngLat(end)
+          .setPopup(new mapboxgl.Popup().setText("Finish Point"))
+          .addTo(map);
+
+        // Fit bounds
+        const bounds = new mapboxgl.LngLatBounds();
+        shortestPath.coordinates.forEach(c => bounds.extend(c));
+        map.fitBounds(bounds, { padding: 60, maxZoom: 18 });
+      }
+    });
+
+    function calculateBearing(start, end) {
+      const [lng1, lat1] = start;
+      const [lng2, lat2] = end;
+      const dLon = toRad(lng2 - lng1);
+      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+      const brng = Math.atan2(y, x);
+      return (toDeg(brng) + 360) % 360;
+    }
+
+    function toRad(d) { return d * Math.PI / 180; }
+    function toDeg(r) { return r * 180 / Math.PI; }
+
+    function createIcon(url) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.width = '30px';
+      img.style.height = '40px';
+      return img;
+    }
+  </script>
 </body>
 </html>
