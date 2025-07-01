@@ -2,8 +2,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>University Roads and Buildings</title>
 
   <!-- Mapbox GL -->
@@ -60,15 +60,6 @@
       vertical-align: middle;
       margin-right: 8px;
     }
-    /* Glowing path effect */
-    .shortest-path-glow {
-      filter: drop-shadow(0 0 12px #FFD180cc);
-      animation: pathGlow 2s infinite alternate;
-    }
-    @keyframes pathGlow {
-      0% { filter: drop-shadow(0 0 12px #FFD180cc); opacity: 0.85; }
-      100% { filter: drop-shadow(0 0 24px #FFE082ff); opacity: 1; }
-    }
   </style>
 </head>
 <body>
@@ -91,11 +82,8 @@
       roads = JSON.parse(`{{ road_data_json|escapejs }}`);
       buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
       shortestPath = {{ shortest_path_json|default:"null"|safe }};
-      console.log("Road Data:", roads);
-      console.log("Building Data:", buildings);
-      console.log("Shortest Path:", shortestPath);
     } catch (err) {
-      console.error("Failed to parse data:", err);
+      console.error("Data parsing error:", err);
     }
 
     const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
@@ -103,19 +91,26 @@
 
     const map = new mapboxgl.Map({
       container: 'map',
-      style: 'mapbox://styles/mapbox/light-v11', // Changed to light style for consistency with Leaflet
+      style: 'mapbox://styles/mapbox/light-v11',
       center: initial,
-      zoom: 18,
-      pitch: 60, // 3D tilt
+      zoom: 17,
+      pitch: 75,
       bearing: end ? calculateBearing(initial, end) : 0,
-      antialias: true,
-      minZoom: 10,
-      maxZoom: 20
+      antialias: true
     });
 
     map.addControl(new mapboxgl.NavigationControl());
 
-    // Add custom legend control
+    // 3D lighting (for building shadows and depth)
+    map.on('style.load', () => {
+      map.setLight({
+        anchor: 'viewport',
+        color: 'white',
+        intensity: 0.9
+      });
+    });
+
+    // Custom legend
     class LegendControl {
       onAdd(map) {
         this._map = map;
@@ -125,8 +120,8 @@
           <div><i style="background:#bdbdbd"></i> Roads</div>
           <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
           <div><i style="background:#FFD180"></i> Shortest Path</div>
-          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" alt="Start Icon"> Starting Point</div>
-          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" alt="Finish Icon"> Finishing Point</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"> Starting Point</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png"> Finishing Point</div>
         `;
         return this._container;
       }
@@ -137,10 +132,9 @@
     }
 
     map.on('load', () => {
-      // Add legend
       map.addControl(new LegendControl(), 'bottom-right');
 
-      // 3D buildings layer
+      // 3D buildings (extruded)
       map.addLayer({
         id: '3d-buildings',
         source: 'composite',
@@ -149,21 +143,18 @@
         type: 'fill-extrusion',
         minzoom: 15,
         paint: {
-          'fill-extrusion-color': '#edf2f4', // Match Leaflet building color
+          'fill-extrusion-color': '#edf2f4',
           'fill-extrusion-height': ['get', 'height'],
           'fill-extrusion-base': ['get', 'min_height'],
           'fill-extrusion-opacity': 0.8
         }
       });
 
-      // Roads
+      // Draw roads
       roads.forEach((road) => {
         try {
           const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
-          map.addSource(`road-${road.id}`, {
-            type: 'geojson',
-            data: geo
-          });
+          map.addSource(`road-${road.id}`, { type: 'geojson', data: geo });
           map.addLayer({
             id: `road-line-${road.id}`,
             type: 'line',
@@ -174,139 +165,74 @@
               'line-opacity': 0.8
             }
           });
-          // Add popup for roads
-          map.on('click', `road-line-${road.id}`, (e) => {
-            new mapboxgl.Popup()
-              .setLngLat(e.lngLat)
-              .setHTML(`<b>Road:</b> ${road.name || "Unnamed Road"}`)
-              .addTo(map);
-          });
-          map.on('mouseenter', `road-line-${road.id}`, () => {
-            map.getCanvas().style.cursor = 'pointer';
-          });
-          map.on('mouseleave', `road-line-${road.id}`, () => {
-            map.getCanvas().style.cursor = '';
-          });
-        } catch (error) {
-          console.error(`Error rendering road ${road.id}:`, error);
+        } catch (e) {
+          console.error(`Road ${road.id} error:`, e);
         }
       });
 
-      // Buildings
-      buildings.forEach((b) => {
+      // Draw buildings
+      buildings.forEach((building) => {
         try {
-          const geo = typeof b.geometry === 'string' ? JSON.parse(b.geometry) : b.geometry;
-          map.addSource(`building-${b.id}`, {
-            type: 'geojson',
-            data: geo
-          });
+          const geo = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
+          map.addSource(`building-${building.id}`, { type: 'geojson', data: geo });
           map.addLayer({
-            id: `building-fill-${b.id}`,
+            id: `building-fill-${building.id}`,
             type: 'fill',
-            source: `building-${b.id}`,
+            source: `building-${building.id}`,
             paint: {
               'fill-color': '#edf2f4',
               'fill-outline-color': '#8d99ae',
               'fill-opacity': 0.8
             }
           });
-          // Add popup for buildings
-          map.on('click', `building-fill-${b.id}`, (e) => {
-            new mapboxgl.Popup()
-              .setLngLat(e.lngLat)
-              .setHTML(`<b>Building:</b> ${b.name || "Unnamed Building"}`)
-              .addTo(map);
-          });
-          map.on('mouseenter', `building-fill-${b.id}`, () => {
-            map.getCanvas().style.cursor = 'pointer';
-          });
-          map.on('mouseleave', `building-fill-${b.id}`, () => {
-            map.getCanvas().style.cursor = '';
-          });
-        } catch (error) {
-          console.error(`Error rendering building ${b.id}:`, error);
+        } catch (e) {
+          console.error(`Building ${building.id} error:`, e);
         }
       });
 
-      // Shortest Path
+      // Draw shortest path
       if (shortestPath) {
-        const pathGeo = {
-          type: "Feature",
-          geometry: shortestPath
-        };
-        // Add glowing effect with a shadow layer
-        map.addSource('shortest-path', {
-          type: 'geojson',
-          data: pathGeo
-        });
-        // Shadow layer for glow
+        const geo = { type: 'Feature', geometry: shortestPath };
+        map.addSource('shortest-path', { type: 'geojson', data: geo });
+
         map.addLayer({
-          id: 'shortest-path-shadow',
+          id: 'shortest-path-glow',
           type: 'line',
           source: 'shortest-path',
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
             'line-color': '#FFD180',
-            'line-width': 12,
-            'line-opacity': 0.5,
-            'line-blur': 10
+            'line-width': 10,
+            'line-opacity': 0.95,
+            'line-blur': 2
           }
         });
-        // Main path layer
-        map.addLayer({
-          id: 'shortest-path-line',
-          type: 'line',
-          source: 'shortest-path',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: {
-            'line-color': '#FFD180',
-            'line-width': 8,
-            'line-opacity': 0.95
-          },
-          metadata: { className: 'shortest-path-glow' } // For CSS glow
-        });
-        // Add popup for path
-        map.on('click', 'shortest-path-line', (e) => {
-          new mapboxgl.Popup()
-            .setLngLat(e.lngLat)
-            .setHTML('<b>Shortest Path</b>')
-            .addTo(map);
-        });
-        map.on('mouseenter', 'shortest-path-line', () => {
-          map.getCanvas().style.cursor = 'pointer';
-        });
-        map.on('mouseleave', 'shortest-path-line', () => {
-          map.getCanvas().style.cursor = '';
-        });
 
-        // Markers
-        const startIcon = 'https://cdn-icons-png.flaticon.com/512/684/684908.png';
-        const endIcon = 'https://cdn-icons-png.flaticon.com/512/190/190411.png';
-
-        const startMarker = new mapboxgl.Marker({ element: createIcon(startIcon, 38, 48) })
-          .setLngLat(initial)
-          .setPopup(new mapboxgl.Popup().setHTML('<b>Starting Point</b>').on('open', () => startMarker.togglePopup()))
-          .addTo(map);
-
-        const endMarker = new mapboxgl.Marker({ element: createIcon(endIcon, 38, 48) })
-          .setLngLat(end)
-          .setPopup(new mapboxgl.Popup().setHTML('<b>Finishing Point</b>'))
-          .addTo(map);
-
-        // Fit bounds and position markers
+        // Fly to the path
         const bounds = new mapboxgl.LngLatBounds();
         shortestPath.coordinates.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 40, maxZoom: 18, minZoom: 16 });
+        map.fitBounds(bounds, { padding: 40, maxZoom: 18 });
 
-        // Adjust map to position start and end points on screen
-        setTimeout(() => {
-          const { width, height, startScreen, endScreen } = getScreenReferencePoints();
-          const startPixel = map.project(initial);
-          const offsetX = startScreen[0] - startPixel.x;
-          const offsetY = startScreen[1] - startPixel.y;
-          map.panBy([offsetX, offsetY], { animate: true });
-          startMarker.togglePopup(); // Open start popup
-        }, 500);
+        // Start & end markers
+        const startMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/684/684908.png') })
+          .setLngLat(initial)
+          .setPopup(new mapboxgl.Popup().setText('Starting Point'))
+          .addTo(map);
+        const endMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/190/190411.png') })
+          .setLngLat(end)
+          .setPopup(new mapboxgl.Popup().setText('Finishing Point'))
+          .addTo(map);
+
+        // Smooth fly
+        map.flyTo({
+          center: initial,
+          zoom: 18,
+          pitch: 75,
+          bearing: calculateBearing(initial, end),
+          speed: 0.6,
+          curve: 1.5,
+          easing: t => t
+        });
       }
     });
 
@@ -323,22 +249,11 @@
       return (toDeg(brng) + 360) % 360;
     }
 
-    function getScreenReferencePoints() {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      return {
-        width,
-        height,
-        startScreen: [width / 2, height * 0.8], // 20% from bottom
-        endScreen: [width / 2, height * 0.2]    // 20% from top
-      };
-    }
-
-    function createIcon(url, width = 30, height = 40) {
+    function createIcon(url) {
       const img = document.createElement('img');
       img.src = url;
-      img.style.width = `${width}px`;
-      img.style.height = `${height}px`;
+      img.style.width = '36px';
+      img.style.height = '44px';
       return img;
     }
   </script>
