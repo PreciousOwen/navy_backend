@@ -2,77 +2,46 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>University Roads and Buildings</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Mapbox GL -->
-  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
-  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-
+  <!-- Mapbox GL CSS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
   <style>
     body {
       margin: 0;
       font-family: 'Segoe UI', sans-serif;
-      background-color: #f4f4f4;
+      background: #f4f4f4;
     }
     h2 {
       text-align: center;
-      margin: 16px;
+      color: #444;
+      margin-top: 15px;
     }
     form {
-      margin: 0 auto;
       text-align: center;
+      margin-bottom: 10px;
     }
     #map {
       width: 100%;
       height: 600px;
     }
-    .mapboxgl-popup {
-      max-width: 200px;
-    }
-    .legend {
-      background: white;
-      padding: 10px;
-      font-size: 14px;
-      position: absolute;
-      bottom: 20px;
-      right: 20px;
-      z-index: 1;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
-      border-radius: 5px;
-    }
-    .legend i {
-      display: inline-block;
-      width: 18px;
-      height: 18px;
-      margin-right: 6px;
-      vertical-align: middle;
-    }
-    .legend img {
-      width: 16px;
-      height: 16px;
-      vertical-align: middle;
-      margin-right: 6px;
-    }
   </style>
 </head>
 <body>
   <h2>University Roads and Buildings</h2>
+
   <form method="POST">
     {% csrf_token %}
     {{ form.as_p }}
     <button type="submit">Find Shortest Path</button>
   </form>
-  <div id="map"></div>
-  <div class="legend">
-    <div><i style="background:#bdbdbd"></i> Roads</div>
-    <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
-    <div><i style="background:#FFD180"></i> Shortest Path</div>
-    <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" /> Start</div>
-    <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" /> Finish</div>
-  </div>
 
+  <div id="map"></div>
+
+  <!-- Mapbox GL JS -->
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
   <script>
     mapboxgl.accessToken = 'pk.eyJ1IjoicHJlY2lvdXNvd2VuIiwiYSI6ImNtY2syY3lhdzA0dWsya3NkdHV1dnVqemIifQ.u6T-9Rj30whmYAFL9lG5Ng';
 
@@ -84,27 +53,28 @@
       roads = JSON.parse(`{{ road_data_json|escapejs }}`);
       buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
       shortestPath = {{ shortest_path_json|default:"null"|safe }};
-    } catch (err) {
-      console.error("Failed to parse data", err);
+    } catch (error) {
+      console.error("Error parsing data", error);
     }
 
-    const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
-    const end = shortestPath?.coordinates?.[shortestPath.coordinates.length - 1];
+    const startCoord = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328];
+    const endCoord = shortestPath?.coordinates?.[shortestPath.coordinates.length - 1];
 
     const map = new mapboxgl.Map({
       container: 'map',
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: initial,
+      center: startCoord,
       zoom: 18,
-      pitch: 60, // tilt
-      bearing: end ? calculateBearing(initial, end) : 0,
+      pitch: 60,
+      bearing: endCoord ? calculateBearing(startCoord, endCoord) : 0,
       antialias: true
     });
 
-    map.addControl(new mapboxgl.NavigationControl());
+    // Compass & Zoom control
+    map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
 
     map.on('load', () => {
-      // 3D buildings layer
+      // Render 3D buildings
       map.addLayer({
         id: '3d-buildings',
         source: 'composite',
@@ -120,35 +90,29 @@
         }
       });
 
-      // Roads
-      roads.forEach((road) => {
+      // Render Roads
+      roads.forEach((road, i) => {
         const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
-        map.addSource(`road-${road.id}`, {
-          type: 'geojson',
-          data: geo
-        });
+        map.addSource(`road-${i}`, { type: 'geojson', data: geo });
         map.addLayer({
-          id: `road-line-${road.id}`,
+          id: `road-${i}`,
           type: 'line',
-          source: `road-${road.id}`,
+          source: `road-${i}`,
           paint: {
             'line-color': '#bdbdbd',
-            'line-width': 5
+            'line-width': 4
           }
         });
       });
 
-      // Buildings
-      buildings.forEach((b) => {
-        const geo = typeof b.geometry === 'string' ? JSON.parse(b.geometry) : b.geometry;
-        map.addSource(`building-${b.id}`, {
-          type: 'geojson',
-          data: geo
-        });
+      // Render Buildings
+      buildings.forEach((building, i) => {
+        const geo = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
+        map.addSource(`building-${i}`, { type: 'geojson', data: geo });
         map.addLayer({
-          id: `building-fill-${b.id}`,
+          id: `building-${i}`,
           type: 'fill',
-          source: `building-${b.id}`,
+          source: `building-${i}`,
           paint: {
             'fill-color': '#edf2f4',
             'fill-outline-color': '#8d99ae',
@@ -157,21 +121,29 @@
         });
       });
 
-      // Path
-      if (shortestPath) {
-        const pathGeo = {
-          type: "Feature",
-          geometry: shortestPath
+      // Render Shortest Path
+      if (shortestPath?.coordinates?.length >= 2) {
+        const geojson = {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: shortestPath.coordinates
+          }
         };
+
         map.addSource('shortest-path', {
           type: 'geojson',
-          data: pathGeo
+          data: geojson
         });
+
         map.addLayer({
           id: 'shortest-path-line',
           type: 'line',
           source: 'shortest-path',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          layout: {
+            'line-join': 'round',
+            'line-cap': 'round'
+          },
           paint: {
             'line-color': '#FFD180',
             'line-width': 8
@@ -182,43 +154,44 @@
         const startIcon = 'https://cdn-icons-png.flaticon.com/512/684/684908.png';
         const endIcon = 'https://cdn-icons-png.flaticon.com/512/190/190411.png';
 
-        new mapboxgl.Marker({ element: createIcon(startIcon) })
-          .setLngLat(initial)
+        new mapboxgl.Marker({ element: createMarkerIcon(startIcon) })
+          .setLngLat(startCoord)
           .setPopup(new mapboxgl.Popup().setText("Start Point"))
           .addTo(map);
 
-        new mapboxgl.Marker({ element: createIcon(endIcon) })
-          .setLngLat(end)
-          .setPopup(new mapboxgl.Popup().setText("Finish Point"))
+        new mapboxgl.Marker({ element: createMarkerIcon(endIcon) })
+          .setLngLat(endCoord)
+          .setPopup(new mapboxgl.Popup().setText("End Point"))
           .addTo(map);
 
-        // Fit bounds
+        // Fit view to route
         const bounds = new mapboxgl.LngLatBounds();
-        shortestPath.coordinates.forEach(c => bounds.extend(c));
+        shortestPath.coordinates.forEach(coord => bounds.extend(coord));
         map.fitBounds(bounds, { padding: 60, maxZoom: 18 });
       }
     });
 
-    function calculateBearing(start, end) {
-      const [lng1, lat1] = start;
-      const [lng2, lat2] = end;
-      const dLon = toRad(lng2 - lng1);
-      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-      const brng = Math.atan2(y, x);
-      return (toDeg(brng) + 360) % 360;
-    }
-
-    function toRad(d) { return d * Math.PI / 180; }
-    function toDeg(r) { return r * 180 / Math.PI; }
-
-    function createIcon(url) {
+    // Marker icon element
+    function createMarkerIcon(url) {
       const img = document.createElement('img');
       img.src = url;
       img.style.width = '30px';
       img.style.height = '40px';
       return img;
+    }
+
+    // Bearing from start to end
+    function calculateBearing(start, end) {
+      const [lng1, lat1] = start;
+      const [lng2, lat2] = end;
+      const toRad = deg => deg * Math.PI / 180;
+      const toDeg = rad => rad * 180 / Math.PI;
+
+      const dLon = toRad(lng2 - lng1);
+      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
+      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
     }
   </script>
 </body>
