@@ -88,8 +88,12 @@
       console.error("Failed to parse data", err);
     }
 
-    const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
-    const end = shortestPath?.coordinates?.[shortestPath.coordinates.length - 1];
+    const initial = shortestPath && shortestPath.coordinates && shortestPath.coordinates.length > 0
+      ? shortestPath.coordinates[0]
+      : [39.281655, -6.814328]; // lng, lat
+    const end = shortestPath && shortestPath.coordinates && shortestPath.coordinates.length > 1
+      ? shortestPath.coordinates[shortestPath.coordinates.length - 1]
+      : null;
 
     const map = new mapboxgl.Map({
       container: 'map',
@@ -121,16 +125,16 @@
       });
 
       // Roads
-      roads.forEach((road) => {
+      roads.forEach((road, idx) => {
         const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
-        map.addSource(`road-${road.id}`, {
+        map.addSource(`road-${idx}`, {
           type: 'geojson',
           data: geo
         });
         map.addLayer({
-          id: `road-line-${road.id}`,
+          id: `road-line-${idx}`,
           type: 'line',
-          source: `road-${road.id}`,
+          source: `road-${idx}`,
           paint: {
             'line-color': '#bdbdbd',
             'line-width': 5
@@ -139,16 +143,16 @@
       });
 
       // Buildings
-      buildings.forEach((b) => {
+      buildings.forEach((b, idx) => {
         const geo = typeof b.geometry === 'string' ? JSON.parse(b.geometry) : b.geometry;
-        map.addSource(`building-${b.id}`, {
+        map.addSource(`building-${idx}`, {
           type: 'geojson',
           data: geo
         });
         map.addLayer({
-          id: `building-fill-${b.id}`,
+          id: `building-fill-${idx}`,
           type: 'fill',
-          source: `building-${b.id}`,
+          source: `building-${idx}`,
           paint: {
             'fill-color': '#edf2f4',
             'fill-outline-color': '#8d99ae',
@@ -158,25 +162,34 @@
       });
 
       // Path
-      if (shortestPath) {
+      if (shortestPath && shortestPath.coordinates && shortestPath.coordinates.length > 1) {
         const pathGeo = {
           type: "Feature",
-          geometry: shortestPath
-        };
-        map.addSource('shortest-path', {
-          type: 'geojson',
-          data: pathGeo
-        });
-        map.addLayer({
-          id: 'shortest-path-line',
-          type: 'line',
-          source: 'shortest-path',
-          layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: {
-            'line-color': '#FFD180',
-            'line-width': 8
+          geometry: {
+            type: "LineString",
+            coordinates: shortestPath.coordinates
           }
-        });
+        };
+        if (map.getSource('shortest-path')) {
+          map.getSource('shortest-path').setData(pathGeo);
+        } else {
+          map.addSource('shortest-path', {
+            type: 'geojson',
+            data: pathGeo
+          });
+        }
+        if (!map.getLayer('shortest-path-line')) {
+          map.addLayer({
+            id: 'shortest-path-line',
+            type: 'line',
+            source: 'shortest-path',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': '#FFD180',
+              'line-width': 8
+            }
+          });
+        }
 
         // Markers
         const startIcon = 'https://cdn-icons-png.flaticon.com/512/684/684908.png';
@@ -187,10 +200,12 @@
           .setPopup(new mapboxgl.Popup().setText("Start Point"))
           .addTo(map);
 
-        new mapboxgl.Marker({ element: createIcon(endIcon) })
-          .setLngLat(end)
-          .setPopup(new mapboxgl.Popup().setText("Finish Point"))
-          .addTo(map);
+        if (end) {
+          new mapboxgl.Marker({ element: createIcon(endIcon) })
+            .setLngLat(end)
+            .setPopup(new mapboxgl.Popup().setText("Finish Point"))
+            .addTo(map);
+        }
 
         // Fit bounds
         const bounds = new mapboxgl.LngLatBounds();
@@ -200,6 +215,7 @@
     });
 
     function calculateBearing(start, end) {
+      if (!start || !end) return 0;
       const [lng1, lat1] = start;
       const [lng2, lat2] = end;
       const dLon = toRad(lng2 - lng1);
