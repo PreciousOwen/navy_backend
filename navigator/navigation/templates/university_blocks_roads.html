@@ -17,48 +17,80 @@
       background-color: #f4f4f4;
       color: #333;
     }
+
     h2 {
       text-align: center;
-      margin: 20px 0;
-      color: #444;
+      margin: 20px 0 10px;
+      color: #222;
+      font-size: 24px;
+      font-weight: 600;
     }
+
     form {
-      margin: 0 auto;
+      margin: 0 auto 10px;
       text-align: center;
     }
+
     #map {
       width: 100%;
       height: 600px;
     }
+
     .mapboxgl-popup {
-      max-width: 200px;
+      max-width: 220px;
     }
+
     .legend {
       background: white;
-      padding: 10px;
-      border-radius: 5px;
-      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+      padding: 10px 15px;
+      border-radius: 6px;
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.25);
       font-size: 14px;
-      line-height: 18px;
       color: #555;
       position: absolute;
       bottom: 20px;
       right: 20px;
       z-index: 1;
     }
-    .legend i {
+
+    .legend i,
+    .legend img {
       display: inline-block;
       width: 18px;
       height: 18px;
-      margin-right: 8px;
+      margin-right: 6px;
       vertical-align: middle;
-      opacity: 0.7;
     }
-    .legend img {
-      width: 18px;
-      height: 18px;
-      vertical-align: middle;
-      margin-right: 8px;
+
+    .control-panel {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      z-index: 2;
+      background: white;
+      padding: 8px 10px;
+      border-radius: 6px;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.15);
+    }
+
+    .control-panel button {
+      padding: 6px 10px;
+      border: none;
+      background: #2980b9;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+      border-radius: 4px;
+    }
+
+    .pulse-path {
+      animation: pulseLine 2s infinite ease-in-out;
+    }
+
+    @keyframes pulseLine {
+      0% { stroke-opacity: 1; stroke-width: 6; }
+      50% { stroke-opacity: 0.6; stroke-width: 10; }
+      100% { stroke-opacity: 1; stroke-width: 6; }
     }
   </style>
 </head>
@@ -69,6 +101,11 @@
     {{ form.as_p }}
     <button type="submit">Find Shortest Path</button>
   </form>
+
+  <div class="control-panel">
+    <button onclick="toggleStyle()">🌓 Toggle View</button>
+  </div>
+
   <div id="map"></div>
 
   <script>
@@ -77,6 +114,7 @@
     let roads = [];
     let buildings = [];
     let shortestPath = null;
+    let isSatellite = false;
 
     try {
       roads = JSON.parse(`{{ road_data_json|escapejs }}`);
@@ -86,7 +124,7 @@
       console.error("Data parsing error:", err);
     }
 
-    const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
+    const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328];
     const end = shortestPath?.coordinates?.[shortestPath.coordinates?.length - 1];
 
     const map = new mapboxgl.Map({
@@ -100,41 +138,33 @@
     });
 
     map.addControl(new mapboxgl.NavigationControl());
+    map.addControl(new mapboxgl.FullscreenControl());
 
-    // 3D lighting (for building shadows and depth)
     map.on('style.load', () => {
-      map.setLight({
-        anchor: 'viewport',
-        color: 'white',
-        intensity: 0.9
-      });
+      map.setLight({ anchor: 'viewport', color: 'white', intensity: 0.9 });
     });
 
-    // Custom legend
     class LegendControl {
       onAdd(map) {
-        this._map = map;
         this._container = document.createElement('div');
         this._container.className = 'legend mapboxgl-ctrl';
         this._container.innerHTML = `
           <div><i style="background:#bdbdbd"></i> Roads</div>
           <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
           <div><i style="background:#FFD180"></i> Shortest Path</div>
-          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"> Starting Point</div>
-          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png"> Finishing Point</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"> Start</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png"> Finish</div>
         `;
         return this._container;
       }
       onRemove() {
         this._container.parentNode.removeChild(this._container);
-        this._map = undefined;
       }
     }
 
     map.on('load', () => {
       map.addControl(new LegendControl(), 'bottom-right');
 
-      // 3D buildings (extruded)
       map.addLayer({
         id: '3d-buildings',
         source: 'composite',
@@ -150,7 +180,6 @@
         }
       });
 
-      // Draw roads
       roads.forEach((road) => {
         try {
           const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
@@ -161,69 +190,66 @@
             source: `road-${road.id}`,
             paint: {
               'line-color': '#bdbdbd',
-              'line-width': 6,
-              'line-opacity': 0.8
+              'line-width': 5,
+              'line-opacity': 0.85
             }
           });
         } catch (e) {
-          console.error(`Road ${road.id} error:`, e);
+          console.error(`Error road ${road.id}`, e);
         }
       });
 
-      // Draw buildings
       buildings.forEach((building) => {
         try {
           const geo = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
           map.addSource(`building-${building.id}`, { type: 'geojson', data: geo });
           map.addLayer({
-            id: `building-fill-${building.id}`,
+            id: `building-${building.id}`,
             type: 'fill',
             source: `building-${building.id}`,
             paint: {
               'fill-color': '#edf2f4',
               'fill-outline-color': '#8d99ae',
-              'fill-opacity': 0.8
+              'fill-opacity': 0.85
             }
           });
         } catch (e) {
-          console.error(`Building ${building.id} error:`, e);
+          console.error(`Error building ${building.id}`, e);
         }
       });
 
-      // Draw shortest path
       if (shortestPath) {
         const geo = { type: 'Feature', geometry: shortestPath };
         map.addSource('shortest-path', { type: 'geojson', data: geo });
 
         map.addLayer({
-          id: 'shortest-path-glow',
+          id: 'shortest-path-line',
           type: 'line',
           source: 'shortest-path',
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
             'line-color': '#FFD180',
-            'line-width': 10,
-            'line-opacity': 0.95,
-            'line-blur': 2
+            'line-width': 8,
+            'line-opacity': 1,
+            'line-blur': 1
           }
         });
 
-        // Fly to the path
-        const bounds = new mapboxgl.LngLatBounds();
-        shortestPath.coordinates.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 40, maxZoom: 18 });
+        map.fitBounds(new mapboxgl.LngLatBounds(shortestPath.coordinates), {
+          padding: 50,
+          maxZoom: 18
+        });
 
-        // Start & end markers
-        const startMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/684/684908.png') })
+        new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/684/684908.png') })
           .setLngLat(initial)
-          .setPopup(new mapboxgl.Popup().setText('Starting Point'))
-          .addTo(map);
-        const endMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/190/190411.png') })
-          .setLngLat(end)
-          .setPopup(new mapboxgl.Popup().setText('Finishing Point'))
+          .setPopup(new mapboxgl.Popup().setText("Starting Point"))
           .addTo(map);
 
-        // Smooth fly
+        new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/190/190411.png') })
+          .setLngLat(end)
+          .setPopup(new mapboxgl.Popup().setText("Finishing Point"))
+          .addTo(map);
+
         map.flyTo({
           center: initial,
           zoom: 18,
@@ -236,6 +262,15 @@
       }
     });
 
+    function toggleStyle() {
+      isSatellite = !isSatellite;
+      map.setStyle(
+        isSatellite
+          ? 'mapbox://styles/mapbox/satellite-streets-v12'
+          : 'mapbox://styles/mapbox/light-v11'
+      );
+    }
+
     function calculateBearing(start, end) {
       const [lng1, lat1] = start;
       const [lng2, lat2] = end;
@@ -245,8 +280,7 @@
       const y = Math.sin(dLon) * Math.cos(toRad(lat2));
       const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
                 Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-      const brng = Math.atan2(y, x);
-      return (toDeg(brng) + 360) % 360;
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
     }
 
     function createIcon(url) {
