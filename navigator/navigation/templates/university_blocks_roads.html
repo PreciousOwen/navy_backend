@@ -2,9 +2,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>University Roads and Buildings</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Mapbox GL -->
   <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
@@ -15,10 +15,12 @@
       margin: 0;
       font-family: 'Segoe UI', sans-serif;
       background-color: #f4f4f4;
+      color: #333;
     }
     h2 {
       text-align: center;
-      margin: 16px;
+      margin: 20px 0;
+      color: #444;
     }
     form {
       margin: 0 auto;
@@ -34,26 +36,38 @@
     .legend {
       background: white;
       padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
       font-size: 14px;
+      line-height: 18px;
+      color: #555;
       position: absolute;
       bottom: 20px;
       right: 20px;
       z-index: 1;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
-      border-radius: 5px;
     }
     .legend i {
       display: inline-block;
       width: 18px;
       height: 18px;
-      margin-right: 6px;
+      margin-right: 8px;
       vertical-align: middle;
+      opacity: 0.7;
     }
     .legend img {
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       vertical-align: middle;
-      margin-right: 6px;
+      margin-right: 8px;
+    }
+    /* Glowing path effect */
+    .shortest-path-glow {
+      filter: drop-shadow(0 0 12px #FFD180cc);
+      animation: pathGlow 2s infinite alternate;
+    }
+    @keyframes pathGlow {
+      0% { filter: drop-shadow(0 0 12px #FFD180cc); opacity: 0.85; }
+      100% { filter: drop-shadow(0 0 24px #FFE082ff); opacity: 1; }
     }
   </style>
 </head>
@@ -65,13 +79,6 @@
     <button type="submit">Find Shortest Path</button>
   </form>
   <div id="map"></div>
-  <div class="legend">
-    <div><i style="background:#bdbdbd"></i> Roads</div>
-    <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
-    <div><i style="background:#FFD180"></i> Shortest Path</div>
-    <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" /> Start</div>
-    <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" /> Finish</div>
-  </div>
 
   <script>
     mapboxgl.accessToken = 'pk.eyJ1IjoicHJlY2lvdXNvd2VuIiwiYSI6ImNtY2syY3lhdzA0dWsya3NkdHV1dnVqemIifQ.u6T-9Rj30whmYAFL9lG5Ng';
@@ -84,26 +91,55 @@
       roads = JSON.parse(`{{ road_data_json|escapejs }}`);
       buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
       shortestPath = {{ shortest_path_json|default:"null"|safe }};
+      console.log("Road Data:", roads);
+      console.log("Building Data:", buildings);
+      console.log("Shortest Path:", shortestPath);
     } catch (err) {
-      console.error("Failed to parse data", err);
+      console.error("Failed to parse data:", err);
     }
 
     const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
-    const end = shortestPath?.coordinates?.[shortestPath.coordinates.length - 1];
+    const end = shortestPath?.coordinates?.[shortestPath.coordinates?.length - 1];
 
     const map = new mapboxgl.Map({
       container: 'map',
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: 'mapbox://styles/mapbox/light-v11', // Changed to light style for consistency with Leaflet
       center: initial,
       zoom: 18,
-      pitch: 60, // tilt
+      pitch: 60, // 3D tilt
       bearing: end ? calculateBearing(initial, end) : 0,
-      antialias: true
+      antialias: true,
+      minZoom: 10,
+      maxZoom: 20
     });
 
     map.addControl(new mapboxgl.NavigationControl());
 
+    // Add custom legend control
+    class LegendControl {
+      onAdd(map) {
+        this._map = map;
+        this._container = document.createElement('div');
+        this._container.className = 'legend mapboxgl-ctrl';
+        this._container.innerHTML = `
+          <div><i style="background:#bdbdbd"></i> Roads</div>
+          <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
+          <div><i style="background:#FFD180"></i> Shortest Path</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" alt="Start Icon"> Starting Point</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" alt="Finish Icon"> Finishing Point</div>
+        `;
+        return this._container;
+      }
+      onRemove() {
+        this._container.parentNode.removeChild(this._container);
+        this._map = undefined;
+      }
+    }
+
     map.on('load', () => {
+      // Add legend
+      map.addControl(new LegendControl(), 'bottom-right');
+
       // 3D buildings layer
       map.addLayer({
         id: '3d-buildings',
@@ -113,60 +149,110 @@
         type: 'fill-extrusion',
         minzoom: 15,
         paint: {
-          'fill-extrusion-color': '#aaa',
+          'fill-extrusion-color': '#edf2f4', // Match Leaflet building color
           'fill-extrusion-height': ['get', 'height'],
           'fill-extrusion-base': ['get', 'min_height'],
-          'fill-extrusion-opacity': 0.6
+          'fill-extrusion-opacity': 0.8
         }
       });
 
       // Roads
       roads.forEach((road) => {
-        const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
-        map.addSource(`road-${road.id}`, {
-          type: 'geojson',
-          data: geo
-        });
-        map.addLayer({
-          id: `road-line-${road.id}`,
-          type: 'line',
-          source: `road-${road.id}`,
-          paint: {
-            'line-color': '#bdbdbd',
-            'line-width': 5
-          }
-        });
+        try {
+          const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
+          map.addSource(`road-${road.id}`, {
+            type: 'geojson',
+            data: geo
+          });
+          map.addLayer({
+            id: `road-line-${road.id}`,
+            type: 'line',
+            source: `road-${road.id}`,
+            paint: {
+              'line-color': '#bdbdbd',
+              'line-width': 6,
+              'line-opacity': 0.8
+            }
+          });
+          // Add popup for roads
+          map.on('click', `road-line-${road.id}`, (e) => {
+            new mapboxgl.Popup()
+              .setLngLat(e.lngLat)
+              .setHTML(`<b>Road:</b> ${road.name || "Unnamed Road"}`)
+              .addTo(map);
+          });
+          map.on('mouseenter', `road-line-${road.id}`, () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+          map.on('mouseleave', `road-line-${road.id}`, () => {
+            map.getCanvas().style.cursor = '';
+          });
+        } catch (error) {
+          console.error(`Error rendering road ${road.id}:`, error);
+        }
       });
 
       // Buildings
       buildings.forEach((b) => {
-        const geo = typeof b.geometry === 'string' ? JSON.parse(b.geometry) : b.geometry;
-        map.addSource(`building-${b.id}`, {
-          type: 'geojson',
-          data: geo
-        });
-        map.addLayer({
-          id: `building-fill-${b.id}`,
-          type: 'fill',
-          source: `building-${b.id}`,
-          paint: {
-            'fill-color': '#edf2f4',
-            'fill-outline-color': '#8d99ae',
-            'fill-opacity': 0.8
-          }
-        });
+        try {
+          const geo = typeof b.geometry === 'string' ? JSON.parse(b.geometry) : b.geometry;
+          map.addSource(`building-${b.id}`, {
+            type: 'geojson',
+            data: geo
+          });
+          map.addLayer({
+            id: `building-fill-${b.id}`,
+            type: 'fill',
+            source: `building-${b.id}`,
+            paint: {
+              'fill-color': '#edf2f4',
+              'fill-outline-color': '#8d99ae',
+              'fill-opacity': 0.8
+            }
+          });
+          // Add popup for buildings
+          map.on('click', `building-fill-${b.id}`, (e) => {
+            new mapboxgl.Popup()
+              .setLngLat(e.lngLat)
+              .setHTML(`<b>Building:</b> ${b.name || "Unnamed Building"}`)
+              .addTo(map);
+          });
+          map.on('mouseenter', `building-fill-${b.id}`, () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+          map.on('mouseleave', `building-fill-${b.id}`, () => {
+            map.getCanvas().style.cursor = '';
+          });
+        } catch (error) {
+          console.error(`Error rendering building ${b.id}:`, error);
+        }
       });
 
-      // Path
+      // Shortest Path
       if (shortestPath) {
         const pathGeo = {
           type: "Feature",
           geometry: shortestPath
         };
+        // Add glowing effect with a shadow layer
         map.addSource('shortest-path', {
           type: 'geojson',
           data: pathGeo
         });
+        // Shadow layer for glow
+        map.addLayer({
+          id: 'shortest-path-shadow',
+          type: 'line',
+          source: 'shortest-path',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#FFD180',
+            'line-width': 12,
+            'line-opacity': 0.5,
+            'line-blur': 10
+          }
+        });
+        // Main path layer
         map.addLayer({
           id: 'shortest-path-line',
           type: 'line',
@@ -174,34 +260,61 @@
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
             'line-color': '#FFD180',
-            'line-width': 8
-          }
+            'line-width': 8,
+            'line-opacity': 0.95
+          },
+          metadata: { className: 'shortest-path-glow' } // For CSS glow
+        });
+        // Add popup for path
+        map.on('click', 'shortest-path-line', (e) => {
+          new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML('<b>Shortest Path</b>')
+            .addTo(map);
+        });
+        map.on('mouseenter', 'shortest-path-line', () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'shortest-path-line', () => {
+          map.getCanvas().style.cursor = '';
         });
 
         // Markers
         const startIcon = 'https://cdn-icons-png.flaticon.com/512/684/684908.png';
         const endIcon = 'https://cdn-icons-png.flaticon.com/512/190/190411.png';
 
-        new mapboxgl.Marker({ element: createIcon(startIcon) })
+        const startMarker = new mapboxgl.Marker({ element: createIcon(startIcon, 38, 48) })
           .setLngLat(initial)
-          .setPopup(new mapboxgl.Popup().setText("Start Point"))
+          .setPopup(new mapboxgl.Popup().setHTML('<b>Starting Point</b>').on('open', () => startMarker.togglePopup()))
           .addTo(map);
 
-        new mapboxgl.Marker({ element: createIcon(endIcon) })
+        const endMarker = new mapboxgl.Marker({ element: createIcon(endIcon, 38, 48) })
           .setLngLat(end)
-          .setPopup(new mapboxgl.Popup().setText("Finish Point"))
+          .setPopup(new mapboxgl.Popup().setHTML('<b>Finishing Point</b>'))
           .addTo(map);
 
-        // Fit bounds
+        // Fit bounds and position markers
         const bounds = new mapboxgl.LngLatBounds();
         shortestPath.coordinates.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 60, maxZoom: 18 });
+        map.fitBounds(bounds, { padding: 40, maxZoom: 18, minZoom: 16 });
+
+        // Adjust map to position start and end points on screen
+        setTimeout(() => {
+          const { width, height, startScreen, endScreen } = getScreenReferencePoints();
+          const startPixel = map.project(initial);
+          const offsetX = startScreen[0] - startPixel.x;
+          const offsetY = startScreen[1] - startPixel.y;
+          map.panBy([offsetX, offsetY], { animate: true });
+          startMarker.togglePopup(); // Open start popup
+        }, 500);
       }
     });
 
     function calculateBearing(start, end) {
       const [lng1, lat1] = start;
       const [lng2, lat2] = end;
+      const toRad = d => d * Math.PI / 180;
+      const toDeg = r => r * 180 / Math.PI;
       const dLon = toRad(lng2 - lng1);
       const y = Math.sin(dLon) * Math.cos(toRad(lat2));
       const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
@@ -210,14 +323,22 @@
       return (toDeg(brng) + 360) % 360;
     }
 
-    function toRad(d) { return d * Math.PI / 180; }
-    function toDeg(r) { return r * 180 / Math.PI; }
+    function getScreenReferencePoints() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      return {
+        width,
+        height,
+        startScreen: [width / 2, height * 0.8], // 20% from bottom
+        endScreen: [width / 2, height * 0.2]    // 20% from top
+      };
+    }
 
-    function createIcon(url) {
+    function createIcon(url, width = 30, height = 40) {
       const img = document.createElement('img');
       img.src = url;
-      img.style.width = '30px';
-      img.style.height = '40px';
+      img.style.width = `${width}px`;
+      img.style.height = `${height}px`;
       return img;
     }
   </script>
