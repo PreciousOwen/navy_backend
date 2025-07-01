@@ -675,7 +675,7 @@ def university_blocks(request):
 def university_blocks_roads(request):
     """
     Fetches cached buildings and roads, and calculates a shortest path if coordinates are provided.
-    This view is robust to malformed geometry data and outputs clean JSON for Mapbox rendering.
+    This view is robust to malformed geometry data.
     """
     print("Starting university_blocks_roads view...")
 
@@ -688,27 +688,17 @@ def university_blocks_roads(request):
             building_data.append({"osm_id": b.osm_id, "name": b.name, "geometry": geom_dict})
         else:
             print(f"Warning: Malformed geometry in DITCachedBuildings {b.osm_id}. Skipping.")
+            # Option to delete: b.delete()
 
     # Fetch roads and build graph
     G, road_data = _build_networkx_graph_from_cached_roads(CachedRoad.objects.all())
     print(f"Graph in university_blocks_roads built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
 
-    # Get start and end coordinates from query parameters or POST
+    # Get start and end coordinates from query parameters
     start_lat = request.GET.get("start_lat")
     start_lng = request.GET.get("start_lng")
     end_lat = request.GET.get("end_lat")
     end_lng = request.GET.get("end_lng")
-
-    # If POST, also support form
-    if request.method == "POST":
-        form = ShortestPathForm(request.POST)
-        if form.is_valid():
-            start_lat = form.cleaned_data["start_lat"]
-            start_lng = form.cleaned_data["start_lng"]
-            end_lat = form.cleaned_data["end_lat"]
-            end_lng = form.cleaned_data["end_lng"]
-    else:
-        form = ShortestPathForm()
 
     shortest_path_geojson = None
 
@@ -719,31 +709,30 @@ def university_blocks_roads(request):
             else:
                 start_point = ShapelyPoint(float(start_lng), float(start_lat))
                 end_point = ShapelyPoint(float(end_lng), float(end_lat))
+                
                 graph_nodes_shapely = ShapelyMultiPoint([ShapelyPoint(node) for node in G.nodes()])
+
                 _, nearest_start_shapely = nearest_points(start_point, graph_nodes_shapely)
                 _, nearest_end_shapely = nearest_points(end_point, graph_nodes_shapely)
+
                 nearest_start_node_tuple = tuple(nearest_start_shapely.coords[0])
                 nearest_end_node_tuple = tuple(nearest_end_shapely.coords[0])
+
                 if nearest_start_node_tuple not in G or nearest_end_node_tuple not in G:
                     print(f"Warning: One or both nearest nodes not found in graph. Start: {nearest_start_node_tuple}, End: {nearest_end_node_tuple}")
+                    # This implies the points are too far from the existing graph or graph is too sparse.
+                    # No path can be found in this scenario.
                 else:
                     path = nx.shortest_path(G, source=nearest_start_node_tuple, target=nearest_end_node_tuple, weight="weight")
                     path_coords = [list(coord) for coord in path]
                     shortest_path_geojson = {"type": "LineString", "coordinates": path_coords}
                     print(f"Shortest path calculated with {len(path_coords)} points.")
+
         except nx.NetworkXNoPath:
             print("Error calculating shortest path: No path found between the given points.")
         except Exception as e:
             print(f"Error calculating shortest path in university_blocks_roads: {e}")
-
-    # Ensure all geometry is a dict (not string) for JSON serialization
-    for road in road_data:
-        if isinstance(road["geometry"], str):
-            road["geometry"] = _get_geojson_from_db_result(road["geometry"])
-    for building in building_data:
-        if isinstance(building["geometry"], str):
-            building["geometry"] = _get_geojson_from_db_result(building["geometry"])
-
+    
     try:
         road_data_json = json.dumps(road_data)
         building_data_json = json.dumps(building_data)
@@ -755,8 +744,7 @@ def university_blocks_roads(request):
     return render(request, "university_blocks_roads.html", {
         "road_data_json": road_data_json,
         "building_data_json": building_data_json,
-        "shortest_path_json": shortest_path_json_str,
-        "form": form
+        "shortest_path_json": shortest_path_json_str
     })
 
 

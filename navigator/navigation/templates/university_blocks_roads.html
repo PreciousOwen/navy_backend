@@ -45,10 +45,17 @@
   <script>
     mapboxgl.accessToken = 'pk.eyJ1IjoicHJlY2lvdXNvd2VuIiwiYSI6ImNtY2syY3lhdzA0dWsya3NkdHV1dnVqemIifQ.u6T-9Rj30whmYAFL9lG5Ng';
 
-    // Use JSON data directly (already parsed in views.py)
-    let roads = {{ road_data_json|safe }};
-    let buildings = {{ building_data_json|safe }};
-    let shortestPath = {{ shortest_path_json|default:"null"|safe }};
+    let roads = [];
+    let buildings = [];
+    let shortestPath = null;
+
+    try {
+      roads = JSON.parse(`{{ road_data_json|escapejs }}`);
+      buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
+      shortestPath = {{ shortest_path_json|default:"null"|safe }};
+    } catch (error) {
+      console.error("Error parsing data", error);
+    }
 
     const startCoord = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328];
     const endCoord = shortestPath?.coordinates?.[shortestPath.coordinates.length - 1];
@@ -63,6 +70,7 @@
       antialias: true
     });
 
+    // Compass & Zoom control
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), 'top-right');
 
     map.on('load', () => {
@@ -84,7 +92,8 @@
 
       // Render Roads
       roads.forEach((road, i) => {
-        map.addSource(`road-${i}`, { type: 'geojson', data: road.geometry });
+        const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
+        map.addSource(`road-${i}`, { type: 'geojson', data: geo });
         map.addLayer({
           id: `road-${i}`,
           type: 'line',
@@ -98,7 +107,8 @@
 
       // Render Buildings
       buildings.forEach((building, i) => {
-        map.addSource(`building-${i}`, { type: 'geojson', data: building.geometry });
+        const geo = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
+        map.addSource(`building-${i}`, { type: 'geojson', data: geo });
         map.addLayer({
           id: `building-${i}`,
           type: 'fill',
@@ -161,6 +171,7 @@
       }
     });
 
+    // Marker icon element
     function createMarkerIcon(url) {
       const img = document.createElement('img');
       img.src = url;
@@ -169,21 +180,10 @@
       return img;
     }
 
+    // Bearing from start to end
     function calculateBearing(start, end) {
       const [lng1, lat1] = start;
       const [lng2, lat2] = end;
-      const toRad = deg => deg * Math.PI / 180;
-      const toDeg = rad => rad * 180 / Math.PI;
-
-      const dLon = toRad(lng2 - lng1);
-      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-      return (toDeg(Math.atan2(y, x)) + 360) % 360;
-    }
-  </script>
-</body>
-</html>
       const toRad = deg => deg * Math.PI / 180;
       const toDeg = rad => rad * 180 / Math.PI;
 
