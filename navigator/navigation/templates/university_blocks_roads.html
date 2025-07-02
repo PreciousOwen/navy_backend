@@ -87,15 +87,12 @@
     }
 
     // Define bounding box as southwest and northeast corners
-    // Calculate min/max lat/lng from the four points
     const boundsCoords = [
       [-6.814852, 39.278648],
       [-6.813221, 39.279457],
       [-6.814859, 39.281596],
       [-6.815981, 39.280397]
     ];
-    // Convert to [lng, lat] for Mapbox
-    const boundsLngLat = boundsCoords.map(([lat, lng]) => [lng, lat]);
     const lats = boundsCoords.map(c => c[0]);
     const lngs = boundsCoords.map(c => c[1]);
     const sw = [Math.min(...lngs), Math.min(...lats)];
@@ -110,22 +107,13 @@
       style: 'mapbox://styles/mapbox/light-v11',
       center: initial,
       zoom: 17,
-      pitch: 75,
-      bearing: end ? calculateBearing(initial, end) : 0,
+      pitch: 0, // 2D view
+      bearing: 0,
       antialias: true,
       maxBounds: mapBounds // Restrict panning/zooming to bounding box
     });
 
     map.addControl(new mapboxgl.NavigationControl());
-
-    // 3D lighting (for building shadows and depth)
-    map.on('style.load', () => {
-      map.setLight({
-        anchor: 'viewport',
-        color: 'white',
-        intensity: 0.9
-      });
-    });
 
     // Custom legend
     class LegendControl {
@@ -151,21 +139,7 @@
     map.on('load', () => {
       map.addControl(new LegendControl(), 'bottom-right');
 
-      // 3D buildings (extruded)
-      map.addLayer({
-        id: '3d-buildings',
-        source: 'composite',
-        'source-layer': 'building',
-        filter: ['==', 'extrude', 'true'],
-        type: 'fill-extrusion',
-        minzoom: 15,
-        paint: {
-          'fill-extrusion-color': '#edf2f4',
-          'fill-extrusion-height': ['get', 'height'],
-          'fill-extrusion-base': ['get', 'min_height'],
-          'fill-extrusion-opacity': 0.8
-        }
-      });
+      // Removed 3D buildings (fill-extrusion) layer
 
       // Draw roads
       roads.forEach((road) => {
@@ -225,7 +199,7 @@
           }
         });
 
-        // Fly to the path
+        // Fit to path
         const bounds = new mapboxgl.LngLatBounds();
         shortestPath.coordinates.forEach(c => bounds.extend(c));
         map.fitBounds(bounds, { padding: 40, maxZoom: 18 });
@@ -239,32 +213,8 @@
           .setLngLat(end)
           .setPopup(new mapboxgl.Popup().setText('Finishing Point'))
           .addTo(map);
-
-        // Smooth fly
-        map.flyTo({
-          center: initial,
-          zoom: 18,
-          pitch: 75,
-          bearing: calculateBearing(initial, end),
-          speed: 0.6,
-          curve: 1.5,
-          easing: t => t
-        });
       }
     });
-
-    function calculateBearing(start, end) {
-      const [lng1, lat1] = start;
-      const [lng2, lat2] = end;
-      const toRad = d => d * Math.PI / 180;
-      const toDeg = r => r * 180 / Math.PI;
-      const dLon = toRad(lng2 - lng1);
-      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-                Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-      const brng = Math.atan2(y, x);
-      return (toDeg(brng) + 360) % 360;
-    }
 
     function createIcon(url) {
       const img = document.createElement('img');
