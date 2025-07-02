@@ -86,6 +86,22 @@
       console.error("Data parsing error:", err);
     }
 
+    // Define bounding box as southwest and northeast corners
+    // Calculate min/max lat/lng from the four points
+    const boundsCoords = [
+      [-6.814852, 39.278648],
+      [-6.813221, 39.279457],
+      [-6.814859, 39.281596],
+      [-6.815981, 39.280397]
+    ];
+    // Convert to [lng, lat] for Mapbox
+    const boundsLngLat = boundsCoords.map(([lat, lng]) => [lng, lat]);
+    const lats = boundsCoords.map(c => c[0]);
+    const lngs = boundsCoords.map(c => c[1]);
+    const sw = [Math.min(...lngs), Math.min(...lats)];
+    const ne = [Math.max(...lngs), Math.max(...lats)];
+    const mapBounds = new mapboxgl.LngLatBounds(sw, ne);
+
     const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
     const end = shortestPath?.coordinates?.[shortestPath.coordinates?.length - 1];
 
@@ -96,7 +112,8 @@
       zoom: 17,
       pitch: 75,
       bearing: end ? calculateBearing(initial, end) : 0,
-      antialias: true
+      antialias: true,
+      maxBounds: mapBounds // Restrict panning/zooming to bounding box
     });
 
     map.addControl(new mapboxgl.NavigationControl());
