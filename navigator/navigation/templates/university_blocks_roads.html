@@ -223,6 +223,26 @@
       img.style.height = '44px';
       return img;
     }
+
+    // You can allow the user to control inclination (pitch) with a UI slider:
+    // Add this after the map div
+    document.addEventListener('DOMContentLoaded', function() {
+      const pitchControl = document.createElement('input');
+      pitchControl.type = 'range';
+      pitchControl.min = 0;
+      pitchControl.max = 60;
+      pitchControl.value = 0;
+      pitchControl.style.position = 'absolute';
+      pitchControl.style.left = '20px';
+      pitchControl.style.bottom = '20px';
+      pitchControl.style.zIndex = 2;
+      pitchControl.title = 'Map Inclination (Pitch)';
+      document.body.appendChild(pitchControl);
+
+      pitchControl.addEventListener('input', function() {
+        map.setPitch(Number(pitchControl.value));
+      });
+    });
   </script>
 </body>
 </html>
