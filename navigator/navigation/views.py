@@ -674,7 +674,7 @@ def university_blocks(request):
 
 def university_blocks_roads(request):
     """
-    Fetches cached buildings and roads, and returns two routes between points if coordinates are provided.
+    Fetches cached buildings and roads, and returns all available road geometries without computing paths.
     """
     print("Starting university_blocks_roads view...")
 
@@ -688,57 +688,22 @@ def university_blocks_roads(request):
         else:
             print(f"Warning: Malformed geometry in DITCachedBuildings {b.osm_id}. Skipping.")
 
-    # Fetch roads and build graph
-    G, road_data = _build_networkx_graph_from_cached_roads(CachedRoad.objects.all())
-    print(f"Graph built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
+    # Fetch roads and prepare route geometries (all roads)
+    road_data = []
+    for r in CachedRoad.objects.all():
+        geom_dict = _get_geojson_from_db_result(r.geometry)
+        if geom_dict:
+            road_data.append({"osm_id": r.osm_id, "name": r.name, "geometry": geom_dict})
+        else:
+            print(f"Warning: Malformed geometry in CachedRoad {r.osm_id}. Skipping.")
 
-    # Get start and end coordinates from query parameters
-    start_lat = request.GET.get("start_lat")
-    start_lng = request.GET.get("start_lng")
-    end_lat = request.GET.get("end_lat")
-    end_lng = request.GET.get("end_lng")
-
-    routes_geojson = []  # store multiple routes
-
-    if start_lat and start_lng and end_lat and end_lng:
-        try:
-            if not G.nodes():
-                print("Error: Graph is empty (no valid roads processed).")
-            else:
-                start_point = ShapelyPoint(float(start_lng), float(start_lat))
-                end_point = ShapelyPoint(float(end_lng), float(end_lat))
-
-                graph_nodes_shapely = ShapelyMultiPoint([ShapelyPoint(node) for node in G.nodes()])
-
-                _, nearest_start_shapely = nearest_points(start_point, graph_nodes_shapely)
-                _, nearest_end_shapely = nearest_points(end_point, graph_nodes_shapely)
-
-                nearest_start_node_tuple = tuple(nearest_start_shapely.coords[0])
-                nearest_end_node_tuple = tuple(nearest_end_shapely.coords[0])
-
-                if nearest_start_node_tuple not in G or nearest_end_node_tuple not in G:
-                    print(f"Warning: Nearest nodes not found. Start: {nearest_start_node_tuple}, End: {nearest_end_node_tuple}")
-                else:
-                    # Get multiple routes (first two)
-                    all_routes = list(nx.shortest_simple_paths(G, nearest_start_node_tuple, nearest_end_node_tuple, weight="weight"))
-                    selected_routes = all_routes[:2]  # pick first two
-
-                    for route in selected_routes:
-                        route_coords = [list(coord) for coord in route]
-                        routes_geojson.append({
-                            "type": "LineString",
-                            "coordinates": route_coords
-                        })
-                    print(f"{len(routes_geojson)} routes calculated.")
-        except nx.NetworkXNoPath:
-            print("Error: No path found between the given points.")
-        except Exception as e:
-            print(f"Error calculating routes: {e}")
+    # No route calculation (we just return all available roads)
+    routes_geojson = []  # Could be empty or all roads as lines (optional)
 
     try:
         road_data_json = json.dumps(road_data)
         building_data_json = json.dumps(building_data)
-        routes_json_str = json.dumps(routes_geojson) if routes_geojson else "[]"
+        routes_json_str = json.dumps(routes_geojson)
     except Exception as e:
         print(f"Error serializing data: {e}")
         return render(request, "error.html", {"message": "Error preparing map data for display."})
