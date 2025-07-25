@@ -1,7 +1,7 @@
 import requests
 import json
 
-BASE_URL = "http://localhost:8000/navigation"  # Replace with your server's base URL
+BASE_URL = "https://navigator.silicon4forge.org/navigation"  # Replace with your server's base URL
 
 def add_path(coordinates, name="Unnamed Path"):
     """
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     # add_path(coordinates, name="Example Path")
 
     # Remove a specific path by osm_id
-    remove_paths(osm_id=1372660163)
+    #remove_paths(osm_id=1372660163)
 
     # Remove all paths
     # remove_paths()
