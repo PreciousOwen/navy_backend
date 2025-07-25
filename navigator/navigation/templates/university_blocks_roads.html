@@ -67,7 +67,7 @@
   <form method="POST">
     {% csrf_token %}
     {{ form.as_p }}
-    <button type="submit">Show Routes</button>
+    <button type="submit">Find Shortest Path</button>
   </form>
   <div id="map"></div>
 
@@ -76,12 +76,12 @@
 
     let roads = [];
     let buildings = [];
-    let routes = [];
+    let shortestPath = null;
 
     try {
       roads = JSON.parse(`{{ road_data_json|escapejs }}`);
       buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
-      routes = JSON.parse(`{{ routes_json|escapejs }}`);
+      shortestPath = {{ shortest_path_json|default:"null"|safe }};
     } catch (err) {
       console.error("Data parsing error:", err);
     }
@@ -99,15 +99,18 @@
     const ne = [Math.max(...lngs), Math.max(...lats)];
     const mapBounds = new mapboxgl.LngLatBounds(sw, ne);
 
+    const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
+    const end = shortestPath?.coordinates?.[shortestPath.coordinates?.length - 1];
+
     const map = new mapboxgl.Map({
       container: 'map',
       style: 'mapbox://styles/mapbox/light-v11',
-      center: [39.281655, -6.814328],
+      center: initial,
       zoom: 17,
-      pitch: 0, 
+      pitch: 0, // 2D view
       bearing: 0,
       antialias: true,
-      maxBounds: mapBounds
+      maxBounds: mapBounds // Restrict panning/zooming to bounding box
     });
 
     map.addControl(new mapboxgl.NavigationControl());
@@ -121,8 +124,9 @@
         this._container.innerHTML = `
           <div><i style="background:#bdbdbd"></i> Roads</div>
           <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
-          <div><i style="background:#FFD180"></i> Route 1</div>
-          <div><i style="background:#42a5f5"></i> Route 2</div>
+          <div><i style="background:#FFD180"></i> Shortest Path</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"> Starting Point</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png"> Finishing Point</div>
         `;
         return this._container;
       }
@@ -135,15 +139,17 @@
     map.on('load', () => {
       map.addControl(new LegendControl(), 'bottom-right');
 
+      // Removed 3D buildings (fill-extrusion) layer
+
       // Draw roads
-      roads.forEach((road, idx) => {
+      roads.forEach((road) => {
         try {
           const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
-          map.addSource(`road-${idx}`, { type: 'geojson', data: geo });
+          map.addSource(`road-${road.id}`, { type: 'geojson', data: geo });
           map.addLayer({
-            id: `road-line-${idx}`,
+            id: `road-line-${road.id}`,
             type: 'line',
-            source: `road-${idx}`,
+            source: `road-${road.id}`,
             paint: {
               'line-color': '#bdbdbd',
               'line-width': 6,
@@ -151,19 +157,19 @@
             }
           });
         } catch (e) {
-          console.error(`Road error:`, e);
+          console.error(`Road ${road.id} error:`, e);
         }
       });
 
       // Draw buildings
-      buildings.forEach((building, idx) => {
+      buildings.forEach((building) => {
         try {
           const geo = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
-          map.addSource(`building-${idx}`, { type: 'geojson', data: geo });
+          map.addSource(`building-${building.id}`, { type: 'geojson', data: geo });
           map.addLayer({
-            id: `building-fill-${idx}`,
+            id: `building-fill-${building.id}`,
             type: 'fill',
-            source: `building-${idx}`,
+            source: `building-${building.id}`,
             paint: {
               'fill-color': '#edf2f4',
               'fill-outline-color': '#8d99ae',
@@ -171,32 +177,42 @@
             }
           });
         } catch (e) {
-          console.error(`Building error:`, e);
+          console.error(`Building ${building.id} error:`, e);
         }
       });
 
-      // Draw multiple routes
-      routes.forEach((route, idx) => {
-        const geo = { type: 'Feature', geometry: route };
-        map.addSource(`route-${idx}`, { type: 'geojson', data: geo });
+      // Draw shortest path
+      if (shortestPath) {
+        const geo = { type: 'Feature', geometry: shortestPath };
+        map.addSource('shortest-path', { type: 'geojson', data: geo });
+
         map.addLayer({
-          id: `route-line-${idx}`,
+          id: 'shortest-path-glow',
           type: 'line',
-          source: `route-${idx}`,
+          source: 'shortest-path',
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': idx === 0 ? '#FFD180' : '#42a5f5',
-            'line-width': 6,
-            'line-opacity': 0.85
+            'line-color': '#FFD180',
+            'line-width': 10,
+            'line-opacity': 0.95,
+            'line-blur': 2
           }
         });
-      });
 
-      // Fit to all routes if available
-      if (routes.length > 0) {
+        // Fit to path
         const bounds = new mapboxgl.LngLatBounds();
-        routes.forEach(route => route.coordinates.forEach(c => bounds.extend(c)));
+        shortestPath.coordinates.forEach(c => bounds.extend(c));
         map.fitBounds(bounds, { padding: 40, maxZoom: 18 });
+
+        // Start & end markers
+        const startMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/684/684908.png') })
+          .setLngLat(initial)
+          .setPopup(new mapboxgl.Popup().setText('Starting Point'))
+          .addTo(map);
+        const endMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/190/190411.png') })
+          .setLngLat(end)
+          .setPopup(new mapboxgl.Popup().setText('Finishing Point'))
+          .addTo(map);
       }
     });
 
@@ -208,7 +224,8 @@
       return img;
     }
 
-    // Map pitch control
+    // You can allow the user to control inclination (pitch) with a UI slider:
+    // Add this after the map div
     document.addEventListener('DOMContentLoaded', function() {
       const pitchControl = document.createElement('input');
       pitchControl.type = 'range';
