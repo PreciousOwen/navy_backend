@@ -54,12 +54,6 @@
       vertical-align: middle;
       opacity: 0.7;
     }
-    .legend img {
-      width: 18px;
-      height: 18px;
-      vertical-align: middle;
-      margin-right: 8px;
-    }
   </style>
 </head>
 <body>
@@ -67,7 +61,7 @@
   <form method="POST">
     {% csrf_token %}
     {{ form.as_p }}
-    <button type="submit">Find Shortest Path</button>
+    <button type="submit">Find Routes</button>
   </form>
   <div id="map"></div>
 
@@ -76,46 +70,31 @@
 
     let roads = [];
     let buildings = [];
-    let shortestPath = null;
+    let routes = [];
 
     try {
-      roads = JSON.parse(`{{ road_data_json|escapejs }}`);
+      roads = JSON.parse(`{{ road_data_json|default:"[]"|escapejs }}`);
       buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
-      shortestPath = {{ shortest_path_json|default:"null"|safe }};
+      routes = JSON.parse(`{{ routes_json|default:"[]"|escapejs }}`);
     } catch (err) {
       console.error("Data parsing error:", err);
     }
 
-    // Define bounding box as southwest and northeast corners
-    const boundsCoords = [
-      [-6.814852, 39.278648],
-      [-6.813221, 39.279457],
-      [-6.814859, 39.281596],
-      [-6.815981, 39.280397]
-    ];
-    const lats = boundsCoords.map(c => c[0]);
-    const lngs = boundsCoords.map(c => c[1]);
-    const sw = [Math.min(...lngs), Math.min(...lats)];
-    const ne = [Math.max(...lngs), Math.max(...lats)];
-    const mapBounds = new mapboxgl.LngLatBounds(sw, ne);
-
-    const initial = shortestPath?.coordinates?.[0] ?? [39.281655, -6.814328]; // lng, lat
-    const end = shortestPath?.coordinates?.[shortestPath.coordinates?.length - 1];
+    const routeColors = ["#FFD180", "#42a5f5", "#66bb6a", "#ff7043", "#ab47bc"];
 
     const map = new mapboxgl.Map({
       container: 'map',
       style: 'mapbox://styles/mapbox/light-v11',
-      center: initial,
+      center: [39.281655, -6.814328],
       zoom: 17,
-      pitch: 0, // 2D view
+      pitch: 0,
       bearing: 0,
-      antialias: true,
-      maxBounds: mapBounds // Restrict panning/zooming to bounding box
+      antialias: true
     });
 
     map.addControl(new mapboxgl.NavigationControl());
 
-    // Custom legend
+    // Custom legend control
     class LegendControl {
       onAdd(map) {
         this._map = map;
@@ -124,9 +103,7 @@
         this._container.innerHTML = `
           <div><i style="background:#bdbdbd"></i> Roads</div>
           <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
-          <div><i style="background:#FFD180"></i> Shortest Path</div>
-          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png"> Starting Point</div>
-          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png"> Finishing Point</div>
+          ${routeColors.map((c, i) => `<div><i style="background:${c}"></i> Route ${i + 1}</div>`).join('')}
         `;
         return this._container;
       }
@@ -139,17 +116,15 @@
     map.on('load', () => {
       map.addControl(new LegendControl(), 'bottom-right');
 
-      // Removed 3D buildings (fill-extrusion) layer
-
-      // Draw roads
-      roads.forEach((road) => {
+      // Draw roads (grey lines)
+      roads.forEach((road, idx) => {
         try {
           const geo = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
-          map.addSource(`road-${road.id}`, { type: 'geojson', data: geo });
+          map.addSource(`road-${idx}`, { type: 'geojson', data: geo });
           map.addLayer({
-            id: `road-line-${road.id}`,
+            id: `road-line-${idx}`,
             type: 'line',
-            source: `road-${road.id}`,
+            source: `road-${idx}`,
             paint: {
               'line-color': '#bdbdbd',
               'line-width': 6,
@@ -157,19 +132,19 @@
             }
           });
         } catch (e) {
-          console.error(`Road ${road.id} error:`, e);
+          console.error(`Road error:`, e);
         }
       });
 
-      // Draw buildings
-      buildings.forEach((building) => {
+      // Draw buildings (filled polygons)
+      buildings.forEach((building, idx) => {
         try {
           const geo = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
-          map.addSource(`building-${building.id}`, { type: 'geojson', data: geo });
+          map.addSource(`building-${idx}`, { type: 'geojson', data: geo });
           map.addLayer({
-            id: `building-fill-${building.id}`,
+            id: `building-fill-${idx}`,
             type: 'fill',
-            source: `building-${building.id}`,
+            source: `building-${idx}`,
             paint: {
               'fill-color': '#edf2f4',
               'fill-outline-color': '#8d99ae',
@@ -177,71 +152,33 @@
             }
           });
         } catch (e) {
-          console.error(`Building ${building.id} error:`, e);
+          console.error(`Building error:`, e);
         }
       });
 
-      // Draw shortest path
-      if (shortestPath) {
-        const geo = { type: 'Feature', geometry: shortestPath };
-        map.addSource('shortest-path', { type: 'geojson', data: geo });
-
+      // Draw multiple routes returned by backend
+      routes.forEach((route, idx) => {
+        const geo = { type: 'Feature', geometry: route };
+        map.addSource(`route-${idx}`, { type: 'geojson', data: geo });
         map.addLayer({
-          id: 'shortest-path-glow',
+          id: `route-line-${idx}`,
           type: 'line',
-          source: 'shortest-path',
+          source: `route-${idx}`,
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': '#FFD180',
-            'line-width': 10,
-            'line-opacity': 0.95,
-            'line-blur': 2
+            'line-color': routeColors[idx % routeColors.length],
+            'line-width': 6,
+            'line-opacity': 0.85
           }
         });
-
-        // Fit to path
-        const bounds = new mapboxgl.LngLatBounds();
-        shortestPath.coordinates.forEach(c => bounds.extend(c));
-        map.fitBounds(bounds, { padding: 40, maxZoom: 18 });
-
-        // Start & end markers
-        const startMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/684/684908.png') })
-          .setLngLat(initial)
-          .setPopup(new mapboxgl.Popup().setText('Starting Point'))
-          .addTo(map);
-        const endMarker = new mapboxgl.Marker({ element: createIcon('https://cdn-icons-png.flaticon.com/512/190/190411.png') })
-          .setLngLat(end)
-          .setPopup(new mapboxgl.Popup().setText('Finishing Point'))
-          .addTo(map);
-      }
-    });
-
-    function createIcon(url) {
-      const img = document.createElement('img');
-      img.src = url;
-      img.style.width = '36px';
-      img.style.height = '44px';
-      return img;
-    }
-
-    // You can allow the user to control inclination (pitch) with a UI slider:
-    // Add this after the map div
-    document.addEventListener('DOMContentLoaded', function() {
-      const pitchControl = document.createElement('input');
-      pitchControl.type = 'range';
-      pitchControl.min = 0;
-      pitchControl.max = 60;
-      pitchControl.value = 0;
-      pitchControl.style.position = 'absolute';
-      pitchControl.style.left = '20px';
-      pitchControl.style.bottom = '20px';
-      pitchControl.style.zIndex = 2;
-      pitchControl.title = 'Map Inclination (Pitch)';
-      document.body.appendChild(pitchControl);
-
-      pitchControl.addEventListener('input', function() {
-        map.setPitch(Number(pitchControl.value));
       });
+
+      // Fit map view to show all routes if any
+      if (routes.length > 0) {
+        const bounds = new mapboxgl.LngLatBounds();
+        routes.forEach(route => route.coordinates.forEach(c => bounds.extend(c)));
+        map.fitBounds(bounds, { padding: 40, maxZoom: 18 });
+      }
     });
   </script>
 </body>

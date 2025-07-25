@@ -671,11 +671,12 @@ def university_blocks(request):
 # ---
 # 11. university_blocks_roads (Combined View with Pathfinding)
 # ---
+from shapely.geometry import Point as ShapelyPoint, MultiPoint as ShapelyMultiPoint
+from shapely.ops import nearest_points
+import networkx as nx
+import json
 
 def university_blocks_roads(request):
-    """
-    Fetches cached buildings and roads, and returns all available road geometries without computing paths.
-    """
     print("Starting university_blocks_roads view...")
 
     # Fetch buildings
@@ -688,28 +689,63 @@ def university_blocks_roads(request):
         else:
             print(f"Warning: Malformed geometry in DITCachedBuildings {b.osm_id}. Skipping.")
 
-    # Fetch roads and prepare route geometries (all roads)
-    road_data = []
-    for r in CachedRoad.objects.all():
-        geom_dict = _get_geojson_from_db_result(r.geometry)
-        if geom_dict:
-            road_data.append({"osm_id": r.osm_id, "name": r.name, "geometry": geom_dict})
-        else:
-            print(f"Warning: Malformed geometry in CachedRoad {r.osm_id}. Skipping.")
+    # Build graph from cached roads
+    G, _ = _build_networkx_graph_from_cached_roads(CachedRoad.objects.all())
+    print(f"Graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
 
-    # No route calculation (we just return all available roads)
-    routes_geojson = []  # Could be empty or all roads as lines (optional)
+    # Parse start/end from GET params
+    start_lat = request.GET.get("start_lat")
+    start_lng = request.GET.get("start_lng")
+    end_lat = request.GET.get("end_lat")
+    end_lng = request.GET.get("end_lng")
+
+    routes_geojson = []
+
+    if start_lat and start_lng and end_lat and end_lng:
+        try:
+            if not G.nodes:
+                print("Empty graph, no routes")
+            else:
+                start_point = ShapelyPoint(float(start_lng), float(start_lat))
+                end_point = ShapelyPoint(float(end_lng), float(end_lat))
+
+                graph_nodes_shapely = ShapelyMultiPoint([ShapelyPoint(node) for node in G.nodes])
+                _, nearest_start_shapely = nearest_points(start_point, graph_nodes_shapely)
+                _, nearest_end_shapely = nearest_points(end_point, graph_nodes_shapely)
+
+                start_node = tuple(nearest_start_shapely.coords[0])
+                end_node = tuple(nearest_end_shapely.coords[0])
+
+                if start_node not in G or end_node not in G:
+                    print(f"Start or end node not in graph: {start_node}, {end_node}")
+                else:
+                    # Get ALL simple paths, not sorted by distance
+                    all_routes_gen = nx.all_simple_paths(G, start_node, end_node, cutoff=20)
+                    max_routes = 5  # Limit to avoid performance issues
+                    count = 0
+                    for route in all_routes_gen:
+                        coords = [list(coord) for coord in route]
+                        routes_geojson.append({
+                            "type": "LineString",
+                            "coordinates": coords
+                        })
+                        count += 1
+                        if count >= max_routes:
+                            break
+                    print(f"Calculated {count} routes")
+        except nx.NetworkXNoPath:
+            print("No path found between points")
+        except Exception as e:
+            print(f"Error calculating routes: {e}")
 
     try:
-        road_data_json = json.dumps(road_data)
         building_data_json = json.dumps(building_data)
         routes_json_str = json.dumps(routes_geojson)
     except Exception as e:
-        print(f"Error serializing data: {e}")
-        return render(request, "error.html", {"message": "Error preparing map data for display."})
+        print(f"Serialization error: {e}")
+        return render(request, "error.html", {"message": "Error preparing map data"})
 
     return render(request, "university_blocks_roads.html", {
-        "road_data_json": road_data_json,
         "building_data_json": building_data_json,
         "routes_json": routes_json_str
     })
