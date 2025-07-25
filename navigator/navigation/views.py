@@ -677,6 +677,10 @@ import networkx as nx
 import json
 
 def university_blocks_roads(request):
+    """
+    Fetches cached buildings and roads, and calculates multiple available routes
+    between start and end coordinates.
+    """
     print("Starting university_blocks_roads view...")
 
     # Fetch buildings
@@ -689,11 +693,11 @@ def university_blocks_roads(request):
         else:
             print(f"Warning: Malformed geometry in DITCachedBuildings {b.osm_id}. Skipping.")
 
-    # Build graph from cached roads
-    G, _ = _build_networkx_graph_from_cached_roads(CachedRoad.objects.all())
-    print(f"Graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
+    # Fetch roads and build graph
+    G, road_data = _build_networkx_graph_from_cached_roads(CachedRoad.objects.all())
+    print(f"Graph built with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges.")
 
-    # Parse start/end from GET params
+    # Get start and end coordinates
     start_lat = request.GET.get("start_lat")
     start_lng = request.GET.get("start_lng")
     end_lat = request.GET.get("end_lat")
@@ -703,13 +707,13 @@ def university_blocks_roads(request):
 
     if start_lat and start_lng and end_lat and end_lng:
         try:
-            if not G.nodes:
-                print("Empty graph, no routes")
+            if not G.nodes():
+                print("Graph is empty, no routes.")
             else:
                 start_point = ShapelyPoint(float(start_lng), float(start_lat))
                 end_point = ShapelyPoint(float(end_lng), float(end_lat))
 
-                graph_nodes_shapely = ShapelyMultiPoint([ShapelyPoint(node) for node in G.nodes])
+                graph_nodes_shapely = ShapelyMultiPoint([ShapelyPoint(node) for node in G.nodes()])
                 _, nearest_start_shapely = nearest_points(start_point, graph_nodes_shapely)
                 _, nearest_end_shapely = nearest_points(end_point, graph_nodes_shapely)
 
@@ -719,33 +723,34 @@ def university_blocks_roads(request):
                 if start_node not in G or end_node not in G:
                     print(f"Start or end node not in graph: {start_node}, {end_node}")
                 else:
-                    # Get ALL simple paths, not sorted by distance
-                    all_routes_gen = nx.all_simple_paths(G, start_node, end_node, cutoff=20)
-                    max_routes = 5  # Limit to avoid performance issues
-                    count = 0
-                    for route in all_routes_gen:
+                    # Generate multiple simple paths (limit to avoid overload)
+                    all_routes_gen = nx.shortest_simple_paths(G, start_node, end_node, weight='weight')
+                    max_routes = 5  # limit to 5 routes for performance
+                    for idx, route in enumerate(all_routes_gen):
                         coords = [list(coord) for coord in route]
                         routes_geojson.append({
                             "type": "LineString",
                             "coordinates": coords
                         })
-                        count += 1
-                        if count >= max_routes:
+                        if idx + 1 >= max_routes:
                             break
-                    print(f"Calculated {count} routes")
+                    print(f"Calculated {len(routes_geojson)} routes.")
+
         except nx.NetworkXNoPath:
-            print("No path found between points")
+            print("No path found between the given points.")
         except Exception as e:
             print(f"Error calculating routes: {e}")
 
     try:
+        road_data_json = json.dumps(road_data)
         building_data_json = json.dumps(building_data)
         routes_json_str = json.dumps(routes_geojson)
     except Exception as e:
-        print(f"Serialization error: {e}")
-        return render(request, "error.html", {"message": "Error preparing map data"})
+        print(f"Error serializing data: {e}")
+        return render(request, "error.html", {"message": "Error preparing map data for display."})
 
     return render(request, "university_blocks_roads.html", {
+        "road_data_json": road_data_json,
         "building_data_json": building_data_json,
         "routes_json": routes_json_str
     })
