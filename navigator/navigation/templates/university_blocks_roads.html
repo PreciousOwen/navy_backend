@@ -2,21 +2,53 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>University Roads and Routes</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>University Roads and Buildings - Multiple Routes</title>
 
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <!-- Mapbox GL CSS -->
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+
   <style>
-    body { margin:0; padding:0; }
-    #map { width:100%; height:100vh; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background-color: #f4f4f4;
+      color: #333;
+    }
+    h2 {
+      text-align: center;
+      margin: 20px 0;
+      color: #444;
+    }
+    form {
+      margin: 0 auto 10px auto;
+      text-align: center;
+    }
+    #map {
+      width: 100%;
+      height: 600px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      margin-bottom: 30px;
+    }
+    .mapboxgl-popup {
+      max-width: 200px;
+    }
     .legend {
       background: white;
-      padding: 8px;
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
       font-size: 14px;
       line-height: 18px;
       color: #555;
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1;
+      max-width: 220px;
     }
     .legend i {
       display: inline-block;
@@ -24,67 +56,232 @@
       height: 18px;
       margin-right: 8px;
       vertical-align: middle;
+      opacity: 0.7;
+    }
+    .legend img {
+      width: 18px;
+      height: 18px;
+      vertical-align: middle;
+      margin-right: 8px;
     }
   </style>
 </head>
 <body>
+  <h2>University Roads and Buildings - Multiple Routes</h2>
+
+  <form method="POST" action="">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Find Routes</button>
+  </form>
+
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoicHJlY2lvdXNvd2VuIiwiYSI6ImNtY2syY3lhdzA0dWsya3NkdHV1dnVqemIifQ.u6T-9Rj30whmYAFL9lG5Ng';
+
+    let roads = [];
     let buildings = [];
     let routes = [];
+
     try {
+      roads = JSON.parse(`{{ road_data_json|escapejs }}`);
       buildings = JSON.parse(`{{ building_data_json|escapejs }}`);
       routes = JSON.parse(`{{ routes_json|default:"[]"|escapejs }}`);
     } catch (err) {
-      console.error("Data parsing error:", err);
+      console.error("Error parsing JSON data:", err);
     }
 
-    // Setup map
-    const map = L.map('map').setView([-6.8143, 39.2796], 17);
-
-    // Add OSM tile layer
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 20,
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    // Color palette for multiple routes
     const routeColors = ["#ff0000", "#00ff00", "#0000ff", "#ff9900", "#800080"];
 
-    // Draw routes
-    if (routes.length > 0) {
-      const bounds = [];
-      routes.forEach((route, idx) => {
-        const color = routeColors[idx % routeColors.length];
-        const polyline = L.polyline(route.coordinates.map(c => [c[1], c[0]]), {
-          color: color,
-          weight: 5,
-          opacity: 0.9
-        }).addTo(map);
-        polyline.bindPopup(`Route ${idx + 1}`);
-        bounds.push(...route.coordinates.map(c => [c[1], c[0]]));
-      });
-      map.fitBounds(bounds);
-    }
+    // Collect all coordinates for bounds calculation
+    let allCoords = [];
 
-    // Draw building polygons (if any)
-    buildings.forEach((building) => {
+    buildings.forEach(b => {
       try {
-        const geo = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
-        const coords = geo.coordinates[0].map(c => [c[1], c[0]]);
-        L.polygon(coords, {
-          color: "#333",
-          weight: 1,
-          fillColor: "#edf2f4",
-          fillOpacity: 0.7
-        }).bindPopup(building.name).addTo(map);
-      } catch (e) {
-        console.error("Building error:", e);
+        const geo = typeof b.geometry === 'string' ? JSON.parse(b.geometry) : b.geometry;
+        geo.coordinates[0].forEach(c => allCoords.push(c));
+      } catch (e) {}
+    });
+
+    roads.forEach(r => {
+      try {
+        const geo = typeof r.geometry === 'string' ? JSON.parse(r.geometry) : r.geometry;
+        if (geo.type === 'LineString') {
+          geo.coordinates.forEach(c => allCoords.push(c));
+        } else if (geo.type === 'MultiLineString') {
+          geo.coordinates.flat().forEach(c => allCoords.push(c));
+        }
+      } catch(e) {}
+    });
+
+    routes.forEach(route => {
+      if (route.coordinates) {
+        route.coordinates.forEach(c => allCoords.push(c));
       }
     });
+
+    // Calculate bounds or use fallback
+    const fallbackBounds = [[39.278, -6.816], [39.282, -6.813]];
+    let mapBounds;
+
+    if (allCoords.length > 0) {
+      const lats = allCoords.map(c => c[1]);
+      const lngs = allCoords.map(c => c[0]);
+      const sw = [Math.min(...lngs), Math.min(...lats)];
+      const ne = [Math.max(...lngs), Math.max(...lats)];
+      mapBounds = new mapboxgl.LngLatBounds(sw, ne);
+    } else {
+      mapBounds = new mapboxgl.LngLatBounds(fallbackBounds[0], fallbackBounds[1]);
+    }
+
+    // Initial center fallback
+    const initialCenter = routes.length > 0 && routes[0].coordinates.length > 0
+      ? routes[0].coordinates[0]
+      : [39.2796, -6.8143];
+
+    const map = new mapboxgl.Map({
+      container: 'map',
+      style: 'mapbox://styles/mapbox/light-v11',
+      center: initialCenter,
+      zoom: 16,
+      maxBounds: mapBounds
+    });
+
+    map.addControl(new mapboxgl.NavigationControl());
+
+    class LegendControl {
+      onAdd(map) {
+        this._map = map;
+        this._container = document.createElement('div');
+        this._container.className = 'legend mapboxgl-ctrl';
+        let routesLegendHtml = '';
+        routeColors.forEach((color, idx) => {
+          routesLegendHtml += `<div><i style="background:${color}"></i> Route ${idx + 1}</div>`;
+        });
+        this._container.innerHTML = `
+          <div><i style="background:#bdbdbd"></i> Roads</div>
+          <div><i style="background:#edf2f4; border:1px solid #8d99ae"></i> Buildings</div>
+          ${routesLegendHtml}
+          <div><img src="https://cdn-icons-png.flaticon.com/512/684/684908.png" alt="start icon"> Starting Point</div>
+          <div><img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" alt="end icon"> Finishing Point</div>
+        `;
+        return this._container;
+      }
+      onRemove() {
+        this._container.parentNode.removeChild(this._container);
+        this._map = undefined;
+      }
+    }
+
+    map.on('load', () => {
+      map.addControl(new LegendControl(), 'bottom-right');
+
+      // Add roads
+      roads.forEach((road, idx) => {
+        try {
+          const geojson = typeof road.geometry === 'string' ? JSON.parse(road.geometry) : road.geometry;
+          map.addSource(`road-${idx}`, { type: 'geojson', data: geojson });
+          map.addLayer({
+            id: `road-layer-${idx}`,
+            type: 'line',
+            source: `road-${idx}`,
+            paint: {
+              'line-color': '#bdbdbd',
+              'line-width': 6,
+              'line-opacity': 0.8
+            }
+          });
+        } catch (e) {
+          console.error(`Error loading road ${idx}`, e);
+        }
+      });
+
+      // Add buildings
+      buildings.forEach((building, idx) => {
+        try {
+          const geojson = typeof building.geometry === 'string' ? JSON.parse(building.geometry) : building.geometry;
+          map.addSource(`building-${idx}`, { type: 'geojson', data: geojson });
+          map.addLayer({
+            id: `building-layer-${idx}`,
+            type: 'fill',
+            source: `building-${idx}`,
+            paint: {
+              'fill-color': '#edf2f4',
+              'fill-outline-color': '#8d99ae',
+              'fill-opacity': 0.8
+            }
+          });
+        } catch (e) {
+          console.error(`Error loading building ${idx}`, e);
+        }
+      });
+
+      // Add routes
+      routes.forEach((route, idx) => {
+        try {
+          const geoFeature = {
+            type: 'Feature',
+            geometry: route
+          };
+          const sourceId = `route-${idx}`;
+          map.addSource(sourceId, { type: 'geojson', data: geoFeature });
+          map.addLayer({
+            id: `${sourceId}-glow`,
+            type: 'line',
+            source: sourceId,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': routeColors[idx % routeColors.length],
+              'line-width': 10,
+              'line-opacity': 0.6,
+              'line-blur': 4
+            }
+          });
+          map.addLayer({
+            id: `${sourceId}-line`,
+            type: 'line',
+            source: sourceId,
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': routeColors[idx % routeColors.length],
+              'line-width': 5,
+              'line-opacity': 1
+            }
+          });
+        } catch(e) {
+          console.error(`Error adding route ${idx}`, e);
+        }
+      });
+
+      // Add start and end markers for first route (if available)
+      if (routes.length > 0) {
+        const firstRoute = routes[0];
+        const startIcon = createIcon('https://cdn-icons-png.flaticon.com/512/684/684908.png');
+        const endIcon = createIcon('https://cdn-icons-png.flaticon.com/512/190/190411.png');
+
+        new mapboxgl.Marker({ element: startIcon })
+          .setLngLat(firstRoute.coordinates[0])
+          .setPopup(new mapboxgl.Popup().setText('Starting Point'))
+          .addTo(map);
+
+        new mapboxgl.Marker({ element: endIcon })
+          .setLngLat(firstRoute.coordinates[firstRoute.coordinates.length - 1])
+          .setPopup(new mapboxgl.Popup().setText('Finishing Point'))
+          .addTo(map);
+      }
+
+      // Fit map bounds (expand slightly for UI)
+      map.fitBounds(mapBounds, { padding: 50, maxZoom: 18 });
+    });
+
+    function createIcon(url) {
+      const img = document.createElement('img');
+      img.src = url;
+      img.style.width = '36px';
+      img.style.height = '44px';
+      return img;
+    }
   </script>
 </body>
 </html>
